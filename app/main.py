@@ -1,9 +1,11 @@
 
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
+from decimal import Decimal
 
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
 from app.agent import FinancialAgentRunner
 from app.database import SessionLocal
@@ -13,6 +15,7 @@ from app.models import (
     Obligation,
     AgentAlert
 )
+from app.cashflow_service import analyze_cashflow
 
 
 # Agent se izvrsava jednom dnevno.
@@ -20,6 +23,12 @@ AGENT_INTERVAL = 24 * 60 * 60
 
 agent = FinancialAgentRunner()
 agent_lock = asyncio.Lock()
+
+
+# Podaci koje korisnik salje prilikom evidentiranja prihoda.
+class ReceiveIncomeRequest(BaseModel):
+    actual_date: date
+    actual_amount: Decimal = Field(gt=0)
 
 
 async def run_agent_once():
@@ -131,10 +140,7 @@ async def run_agent_manually():
 
 @app.get("/finance/overview")
 def get_financial_overview():
-    """
-    Vraca pregled trenutnog finansijskog stanja,
-    ocekivanih prihoda i neplacenih obaveza.
-    """
+    """Vraca pregled trenutnog finansijskog stanja."""
 
     db = SessionLocal()
 
@@ -223,6 +229,142 @@ def get_active_alerts():
                 for alert in alerts
             ]
         }
+
+    finally:
+        db.close()
+
+
+@app.get("/finance/forecast")
+def get_financial_forecast():
+    """Vraca hronolosku projekciju buduceg novcanog toka."""
+
+    db = SessionLocal()
+
+    try:
+        result = analyze_cashflow(db)
+
+        return {
+            "starting_balance": float(result["starting_balance"]),
+            "final_balance": float(result["final_balance"]),
+            "has_shortage": result["has_shortage"],
+            "first_shortage_date": (
+                result["first_shortage_date"].isoformat()
+                if result["first_shortage_date"]
+                else None
+            ),
+            "maximum_shortage": float(result["maximum_shortage"]),
+            "timeline": [
+                {
+                    "date": event["date"].isoformat(),
+                    "type": event["type"],
+                    "description": event["description"],
+                    "amount": float(event["amount"]),
+                    "balance": float(event["balance"])
+                }
+                for event in result["timeline"]
+            ]
+        }
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Greska prilikom analize novcanog toka: {str(error)}"
+        )
+
+    finally:
+        db.close()
+
+
+@app.post("/incomes/{income_id}/receive")
+def receive_income(
+    income_id: int,
+    request: ReceiveIncomeRequest
+):
+    """
+    Evidentira stvarno primljeni prihod,
+    azurira stanje racuna i cuva podatke za ucenje agenta.
+    """
+
+    db = SessionLocal()
+
+    try:
+        income = (
+            db.query(IncomePayment)
+            .filter(IncomePayment.id == income_id)
+            .first()
+        )
+
+        if income is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Prihod nije pronadjen."
+            )
+
+        if income.status != "Expected":
+            raise HTTPException(
+                status_code=409,
+                detail="Ovaj prihod je vec evidentiran kao primljen."
+            )
+
+        account = (
+            db.query(AccountState)
+            .order_by(AccountState.id)
+            .first()
+        )
+
+        if account is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Finansijsko stanje racuna nije pronadjeno."
+            )
+
+        # Evidentiranje stvarnih podataka o uplati.
+        income.actual_date = request.actual_date
+        income.actual_amount = request.actual_amount
+        income.status = "Received"
+
+        # Uvecavanje trenutnog stanja racuna.
+        account.current_balance = (
+            Decimal(account.current_balance)
+            + request.actual_amount
+        )
+
+        # Trajno cuvanje promjena u bazi.
+        db.commit()
+        db.refresh(income)
+        db.refresh(account)
+
+        delay_days = (
+            income.actual_date - income.expected_date
+        ).days
+
+        return {
+            "status": "success",
+            "message": "Prihod je uspjesno evidentiran.",
+            "income": {
+                "id": income.id,
+                "source": income.source_name,
+                "expected_date": income.expected_date.isoformat(),
+                "actual_date": income.actual_date.isoformat(),
+                "expected_amount": float(income.expected_amount),
+                "actual_amount": float(income.actual_amount),
+                "delay_days": delay_days,
+                "status": income.status
+            },
+            "new_account_balance": float(account.current_balance)
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as error:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Greska prilikom evidentiranja prihoda: {str(error)}"
+        )
 
     finally:
         db.close()
