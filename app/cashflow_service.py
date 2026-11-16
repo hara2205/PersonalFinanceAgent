@@ -1,7 +1,6 @@
 
 from decimal import Decimal
 
-from app.database import SessionLocal
 from app.models import AccountState, IncomePayment, Obligation
 from app.income_prediction import predict_income_date
 
@@ -11,6 +10,7 @@ def analyze_cashflow(db):
     Analizira buduci novcani tok na osnovu:
     - trenutnog stanja racuna
     - ocekivanih prihoda
+    - unaprijed evidentiranih buducih uplata
     - predvidjenih datuma prihoda
     - neplacenih finansijskih obaveza
     """
@@ -25,13 +25,9 @@ def analyze_cashflow(db):
         raise ValueError("Trenutno stanje racuna nije uneseno.")
 
     balance = Decimal(account.current_balance)
-
     events = []
 
-    # --------------------------------------
-    # 1. DODAVANJE OCEKIVANIH PRIHODA
-    # --------------------------------------
-
+    # 1. Ocekivani prihodi
     pending_incomes = (
         db.query(IncomePayment)
         .filter(IncomePayment.status == "Expected")
@@ -49,10 +45,25 @@ def analyze_cashflow(db):
             "amount": Decimal(income.expected_amount)
         })
 
-    # --------------------------------------
-    # 2. DODAVANJE NEPLACENIH OBAVEZA
-    # --------------------------------------
+    # 2. Buduce uplate koje su vec evidentirane
+    scheduled_incomes = (
+        db.query(IncomePayment)
+        .filter(
+            IncomePayment.status == "ScheduledReceived"
+        )
+        .all()
+    )
 
+    for income in scheduled_incomes:
+        events.append({
+            "date": income.actual_date,
+            "priority": 1,
+            "type": "income",
+            "description": income.source_name,
+            "amount": Decimal(income.actual_amount)
+        })
+
+    # 3. Neplacene obaveze
     pending_obligations = (
         db.query(Obligation)
         .filter(Obligation.status == "Pending")
@@ -68,12 +79,8 @@ def analyze_cashflow(db):
             "amount": Decimal(obligation.amount)
         })
 
-    # --------------------------------------
-    # 3. HRONOLOSKO SORTIRANJE DOGADJAJA
-    # --------------------------------------
-
-    # Ako prihod i obaveza imaju isti datum,
-    # prvo obradjujemo obavezu.
+    # 4. Hronolosko sortiranje
+    # Obaveza se obradjuje prije prihoda istog dana.
     events.sort(
         key=lambda event: (
             event["date"],
@@ -82,20 +89,15 @@ def analyze_cashflow(db):
     )
 
     timeline = []
-
     first_shortage_date = None
     maximum_shortage = Decimal("0.00")
 
-    # --------------------------------------
-    # 4. SIMULACIJA NOVCANOG TOKA
-    # --------------------------------------
-
+    # 5. Simulacija novcanog toka
     for event in events:
 
         if event["type"] == "income":
             balance += event["amount"]
             event_name = "PRIHOD"
-
         else:
             balance -= event["amount"]
             event_name = "OBAVEZA"
@@ -108,7 +110,6 @@ def analyze_cashflow(db):
             "balance": balance
         })
 
-        # Evidentiramo prvi datum kada novac nije dovoljan.
         if balance < 0:
             if first_shortage_date is None:
                 first_shortage_date = event["date"]
@@ -126,57 +127,3 @@ def analyze_cashflow(db):
         "has_shortage": first_shortage_date is not None,
         "timeline": timeline
     }
-
-
-def main():
-    db = SessionLocal()
-
-    try:
-        result = analyze_cashflow(db)
-
-        print("====================================")
-        print(" ANALIZA NOVCANOG TOKA")
-        print("====================================")
-
-        print(
-            f"\nPocetno stanje: "
-            f"{result['starting_balance']:.2f} KM"
-        )
-
-        print("\nHRONOLOSKI PREGLED:")
-
-        for event in result["timeline"]:
-            print(
-                f"{event['date']} | "
-                f"{event['type']} | "
-                f"{event['description']} | "
-                f"{event['amount']:.2f} KM | "
-                f"Stanje: {event['balance']:.2f} KM"
-            )
-
-        print("\n====================================")
-
-        if result["has_shortage"]:
-            print("UPOZORENJE: PREDVIDJEN MANJAK NOVCA!")
-            print(
-                "Datum prvog manjka:",
-                result["first_shortage_date"]
-            )
-            print(
-                "Najveci predvidjeni manjak:",
-                f"{result['maximum_shortage']:.2f} KM"
-            )
-        else:
-            print("Nije predvidjen manjak novca.")
-
-        print(
-            f"Zavrsno stanje: "
-            f"{result['final_balance']:.2f} KM"
-        )
-
-    finally:
-        db.close()
-
-
-if __name__ == "__main__":
-    main()

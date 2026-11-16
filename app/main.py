@@ -18,33 +18,98 @@ from app.models import (
 from app.cashflow_service import analyze_cashflow
 
 
-# Agent se izvrsava jednom dnevno.
 AGENT_INTERVAL = 24 * 60 * 60
 
 agent = FinancialAgentRunner()
 agent_lock = asyncio.Lock()
 
 
-# Podaci koje korisnik salje prilikom evidentiranja prihoda.
 class ReceiveIncomeRequest(BaseModel):
     actual_date: date
     actual_amount: Decimal = Field(gt=0)
 
 
 async def run_agent_once():
-    """Pokrece jedan ciklus finansijskog agenta."""
-
     async with agent_lock:
-        result = await asyncio.to_thread(agent.step)
-        return result
+        return await asyncio.to_thread(agent.step)
+
+
+def activate_due_incomes():
+    """
+    Aktivira unaprijed evidentirane uplate
+    kada dodje njihov datum.
+    """
+
+    db = SessionLocal()
+
+    try:
+        today = date.today()
+
+        due_incomes = (
+            db.query(IncomePayment)
+            .filter(
+                IncomePayment.status == "ScheduledReceived",
+                IncomePayment.actual_date <= today
+            )
+            .all()
+        )
+
+        if not due_incomes:
+            return 0
+
+        account = (
+            db.query(AccountState)
+            .order_by(AccountState.id)
+            .first()
+        )
+
+        if account is None:
+            raise ValueError("Finansijsko stanje racuna nije pronadjeno.")
+
+        activated_count = 0
+
+        for income in due_incomes:
+            income.status = "Received"
+
+            account.current_balance = (
+                Decimal(account.current_balance)
+                + Decimal(income.actual_amount)
+            )
+
+            activated_count += 1
+
+        db.commit()
+
+        print(
+            f"[BACKGROUND] Aktivirano uplata: {activated_count}"
+        )
+
+        return activated_count
+
+    except Exception:
+        db.rollback()
+        raise
+
+    finally:
+        db.close()
 
 
 async def periodic_agent_runner():
-    """Automatsko izvrsavanje agenta svakih 24 sata."""
-
     while True:
         try:
-            print("\n[BACKGROUND] Pokretanje automatske analize...")
+            print("\n[BACKGROUND] Provjera buducih uplata...")
+
+            activated = await asyncio.to_thread(
+                activate_due_incomes
+            )
+
+            if activated > 0:
+                print(
+                    "[BACKGROUND] Pokretanje nove analize "
+                    "nakon aktiviranja uplata."
+                )
+
+            print("[BACKGROUND] Pokretanje finansijske analize...")
 
             await run_agent_once()
 
@@ -52,7 +117,7 @@ async def periodic_agent_runner():
 
         except Exception as error:
             print(
-                "[BACKGROUND] Greska prilikom izvrsavanja agenta:",
+                "[BACKGROUND] Greska:",
                 error
             )
 
@@ -61,7 +126,6 @@ async def periodic_agent_runner():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Pokretanje i zaustavljanje pozadinskog agenta."""
 
     print("\n====================================")
     print(" POKRETANJE PERSONAL FINANCE BACKEND-a")
@@ -89,7 +153,7 @@ app = FastAPI(
         "API za pracenje finansijskih obaveza, "
         "predvidjanje prihoda i analizu likvidnosti."
     ),
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan
 )
 
@@ -113,7 +177,6 @@ def health_check():
 
 @app.post("/agent/run")
 async def run_agent_manually():
-    """Rucno pokretanje jednog ciklusa agenta."""
 
     try:
         result = await run_agent_once()
@@ -140,7 +203,6 @@ async def run_agent_manually():
 
 @app.get("/finance/overview")
 def get_financial_overview():
-    """Vraca pregled trenutnog finansijskog stanja."""
 
     db = SessionLocal()
 
@@ -149,7 +211,12 @@ def get_financial_overview():
 
         incomes = (
             db.query(IncomePayment)
-            .filter(IncomePayment.status == "Expected")
+            .filter(
+                IncomePayment.status.in_([
+                    "Expected",
+                    "ScheduledReceived"
+                ])
+            )
             .order_by(IncomePayment.expected_date)
             .all()
         )
@@ -177,7 +244,16 @@ def get_financial_overview():
                     "id": income.id,
                     "source": income.source_name,
                     "expected_date": income.expected_date.isoformat(),
-                    "expected_amount": float(income.expected_amount)
+                    "expected_amount": float(income.expected_amount),
+                    "actual_date": (
+                        income.actual_date.isoformat()
+                        if income.actual_date else None
+                    ),
+                    "actual_amount": (
+                        float(income.actual_amount)
+                        if income.actual_amount is not None else None
+                    ),
+                    "status": income.status
                 }
                 for income in incomes
             ],
@@ -199,7 +275,6 @@ def get_financial_overview():
 
 @app.get("/alerts")
 def get_active_alerts():
-    """Vraca sva trenutno aktivna upozorenja agenta."""
 
     db = SessionLocal()
 
@@ -217,13 +292,10 @@ def get_active_alerts():
                 {
                     "id": alert.id,
                     "created_at": alert.created_at.isoformat(),
-                    "shortage_date": (
-                        alert.shortage_date.isoformat()
-                        if alert.shortage_date else None
-                    ),
+                    "shortage_date": alert.shortage_date.isoformat(),
                     "shortage_amount": float(alert.shortage_amount),
                     "message": alert.message,
-                    "confidence": alert.confidence,
+                    "confidence": float(alert.confidence),
                     "is_active": alert.is_active
                 }
                 for alert in alerts
@@ -236,7 +308,6 @@ def get_active_alerts():
 
 @app.get("/finance/forecast")
 def get_financial_forecast():
-    """Vraca hronolosku projekciju buduceg novcanog toka."""
 
     db = SessionLocal()
 
@@ -276,14 +347,10 @@ def get_financial_forecast():
 
 
 @app.post("/incomes/{income_id}/receive")
-def receive_income(
+async def receive_income(
     income_id: int,
     request: ReceiveIncomeRequest
 ):
-    """
-    Evidentira stvarno primljeni prihod,
-    azurira stanje racuna i cuva podatke za ucenje agenta.
-    """
 
     db = SessionLocal()
 
@@ -303,7 +370,7 @@ def receive_income(
         if income.status != "Expected":
             raise HTTPException(
                 status_code=409,
-                detail="Ovaj prihod je vec evidentiran kao primljen."
+                detail="Ovaj prihod je vec evidentiran ili zakazan."
             )
 
         account = (
@@ -318,18 +385,31 @@ def receive_income(
                 detail="Finansijsko stanje racuna nije pronadjeno."
             )
 
-        # Evidentiranje stvarnih podataka o uplati.
         income.actual_date = request.actual_date
         income.actual_amount = request.actual_amount
-        income.status = "Received"
 
-        # Uvecavanje trenutnog stanja racuna.
-        account.current_balance = (
-            Decimal(account.current_balance)
-            + request.actual_amount
-        )
+        if request.actual_date > date.today():
 
-        # Trajno cuvanje promjena u bazi.
+            income.status = "ScheduledReceived"
+
+            message = (
+                "Buduca uplata je evidentirana. "
+                "Saldo ce biti azuriran na datum uplate."
+            )
+
+        else:
+
+            income.status = "Received"
+
+            account.current_balance = (
+                Decimal(account.current_balance)
+                + request.actual_amount
+            )
+
+            account.updated_at = datetime.now(timezone.utc)
+
+            message = "Prihod je uspjesno evidentiran."
+
         db.commit()
         db.refresh(income)
         db.refresh(account)
@@ -338,9 +418,9 @@ def receive_income(
             income.actual_date - income.expected_date
         ).days
 
-        return {
+        result = {
             "status": "success",
-            "message": "Prihod je uspjesno evidentiran.",
+            "message": message,
             "income": {
                 "id": income.id,
                 "source": income.source_name,
@@ -368,3 +448,8 @@ def receive_income(
 
     finally:
         db.close()
+
+    if request.actual_date <= date.today():
+        await run_agent_once()
+
+    return result
