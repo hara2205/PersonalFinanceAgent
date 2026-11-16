@@ -54,9 +54,10 @@ def make_agent_decision(db):
 
     result = analyze_cashflow(db)
 
+    # Ako nije predvidjen manjak novca,
+    # deaktiviramo prethodna aktivna upozorenja.
     if not result["has_shortage"]:
-        # Ako vise nema rizika, deaktiviramo
-        # prethodna aktivna upozorenja.
+
         active_alerts = (
             db.query(AgentAlert)
             .filter(AgentAlert.is_active == True)
@@ -70,13 +71,18 @@ def make_agent_decision(db):
 
         return {
             "alert_created": False,
+            "alert_updated": False,
             "message": "Nije predvidjen manjak novca."
         }
 
-    shortage_date = result["first_shortage_date"]
-    shortage_amount = result["maximum_shortage"]
+    # --------------------------------------
+    # 1. ANALIZA PRVOG I NAJVECEG MANJKA
+    # --------------------------------------
 
-    # Pronalazimo obavezu koja je izazvala
+    shortage_date = result["first_shortage_date"]
+    maximum_shortage = result["maximum_shortage"]
+
+    # Pronalazimo dogadjaj koji je izazvao
     # prvi negativan saldo.
     affected_event = next(
         (
@@ -94,21 +100,37 @@ def make_agent_decision(db):
         else "Finansijska obaveza"
     )
 
+    # Iznos koji nedostaje odmah nakon prve
+    # obaveze koja dovodi stanje ispod nule.
+    first_shortage_amount = (
+        abs(affected_event["balance"])
+        if affected_event
+        else maximum_shortage
+    )
+
     confidence = calculate_confidence(db)
 
+    # --------------------------------------
+    # 2. KREIRANJE PORUKE AGENTA
+    # --------------------------------------
+
     message = (
-        f"Predvidjen je nedostatak novca dana "
+        f"Prvi nedostatak novca predvidjen je za "
         f"{shortage_date}. "
         f"Obaveza koja izaziva prvi manjak: "
         f"{affected_obligation}. "
-        f"Predvidjeni manjak iznosi "
-        f"{shortage_amount:.2f} KM. "
+        f"Tada ce nedostajati "
+        f"{first_shortage_amount:.2f} KM. "
+        f"Najveci predvidjeni manjak iznosi "
+        f"{maximum_shortage:.2f} KM. "
         f"Preporucuje se da korisnik obezbijedi "
         f"dodatna sredstva ili provjeri rok placanja."
     )
 
-    # Provjeravamo postoji li vec aktivno
-    # upozorenje za isti datum.
+    # --------------------------------------
+    # 3. PROVJERA POSTOJECEG UPOZORENJA
+    # --------------------------------------
+
     existing_alert = (
         db.query(AgentAlert)
         .filter(
@@ -119,9 +141,10 @@ def make_agent_decision(db):
     )
 
     if existing_alert:
+
         # Azuriramo postojece upozorenje
         # umjesto kreiranja duplikata.
-        existing_alert.shortage_amount = shortage_amount
+        existing_alert.shortage_amount = maximum_shortage
         existing_alert.message = message
         existing_alert.confidence = confidence
 
@@ -132,14 +155,18 @@ def make_agent_decision(db):
             "alert_updated": True,
             "message": message,
             "shortage_date": shortage_date,
-            "shortage_amount": shortage_amount,
+            "shortage_amount": maximum_shortage,
+            "first_shortage_amount": first_shortage_amount,
             "confidence": confidence
         }
 
-    # Kreiramo novo upozorenje.
+    # --------------------------------------
+    # 4. KREIRANJE NOVOG UPOZORENJA
+    # --------------------------------------
+
     alert = AgentAlert(
         shortage_date=shortage_date,
-        shortage_amount=shortage_amount,
+        shortage_amount=maximum_shortage,
         message=message,
         confidence=confidence,
         is_active=True
@@ -153,7 +180,8 @@ def make_agent_decision(db):
         "alert_updated": False,
         "message": message,
         "shortage_date": shortage_date,
-        "shortage_amount": shortage_amount,
+        "shortage_amount": maximum_shortage,
+        "first_shortage_amount": first_shortage_amount,
         "confidence": confidence
     }
 
@@ -181,11 +209,20 @@ def main():
         print(decision["message"])
 
         if decision.get("shortage_date"):
-            print("\nDatum manjka:", decision["shortage_date"])
+
+            print("\nDatum prvog manjka:",
+                  decision["shortage_date"])
+
             print(
-                "Iznos manjka:",
+                "Manjak kod prve obaveze:",
+                f"{decision['first_shortage_amount']:.2f} KM"
+            )
+
+            print(
+                "Najveci predvidjeni manjak:",
                 f"{decision['shortage_amount']:.2f} KM"
             )
+
             print(
                 "Indeks pouzdanosti:",
                 f"{decision['confidence']:.2f}"
@@ -194,10 +231,12 @@ def main():
         print("\nBroj upozorenja u bazi:",
               db.query(AgentAlert).count())
 
-        print("Broj aktivnih upozorenja:",
-              db.query(AgentAlert)
-              .filter(AgentAlert.is_active == True)
-              .count())
+        print(
+            "Broj aktivnih upozorenja:",
+            db.query(AgentAlert)
+            .filter(AgentAlert.is_active == True)
+            .count()
+        )
 
     finally:
         db.close()

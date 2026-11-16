@@ -128,13 +128,13 @@ def seed_database():
         # --------------------------------------
 
         current_salary = IncomePayment(
-            source_name="Plata",
-            expected_date=today - timedelta(days=1),
-            expected_amount=Decimal("1800.00"),
-            actual_date=None,
-            actual_amount=None,
-            status="Expected"
-        )
+    source_name="Plata",
+    expected_date=today + timedelta(days=4),
+    expected_amount=Decimal("1800.00"),
+    actual_date=None,
+    actual_amount=None,
+    status="Expected"
+)
 
         db.add(current_salary)
 
