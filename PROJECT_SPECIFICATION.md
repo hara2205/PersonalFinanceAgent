@@ -1,322 +1,214 @@
 # Personal Finance Agent
-## Projektna specifikacija
+## Agent za predviđanje likvidnosti kod korisnika s neredovnim prihodima
 
-**Naziv projekta:** Personal Finance Agent – Inteligentni agent za upravljanje ličnim finansijama  
-**Verzija dokumenta:** 1.0  
-**Status:** Početna specifikacija  
+**Verzija:** 2.0  
+**Status:** Specifikacija za implementaciju  
 **Programski jezik:** Python
 
----
+## 1. Opis problema
 
-## 1. Opis projekta
+Osobe koje ostvaruju neredovne prihode često imaju problem s planiranjem plaćanja svojih finansijskih obaveza. Čak i kada očekuju određenu uplatu, ona može kasniti nekoliko dana, što može dovesti do nedostatka novca za račune, stanarinu, rate kredita i druge obaveze.
 
-Personal Finance Agent je inteligentni softverski agent namijenjen praćenju, analizi i optimizaciji ličnih finansija korisnika.
+Cilj projekta je razvoj autonomnog softverskog agenta koji prati finansijsko stanje korisnika, analizira očekivane prihode i dospijeće obaveza te predviđa postoji li rizik da korisnik neće imati dovoljno sredstava prije sljedeće uplate.
 
-Sistem omogućava evidentiranje prihoda i rashoda, definisanje mjesečnih budžeta i ciljeva štednje. Na osnovu prikupljenih podataka agent kontinuirano analizira finansijsko stanje korisnika, prepoznaje obrasce potrošnje, predviđa moguće prekoračenje budžeta i generiše personalizovane preporuke.
+Za razliku od obične aplikacije za praćenje troškova, agent samostalno izvršava periodične provjere, predviđa kašnjenja prihoda, donosi odluke o upozoravanju korisnika i prilagođava buduće procjene na osnovu stvarnih datuma uplata.
 
-Za razliku od obične aplikacije za evidentiranje troškova, agent samostalno prati promjene, obrađuje nove događaje, donosi odluke i prilagođava prioritete svojih preporuka na osnovu povratnih informacija korisnika.
+## 2. Osnovni ciljevi
 
-Sistem je namijenjen demonstraciji principa autonomnih softverskih agenata i primjene mašinskog učenja u oblasti ličnih finansija.
+- Evidentiranje trenutnog stanja novca.
+- Evidentiranje očekivanih i stvarnih prihoda.
+- Evidentiranje finansijskih obaveza i njihovih datuma dospijeća.
+- Predviđanje datuma budućih uplata na osnovu historijskih kašnjenja.
+- Predviđanje mogućeg nedostatka sredstava.
+- Pravovremeno generisanje upozorenja.
+- Učenje iz stvarnih datuma pristiglih uplata.
+- Prilagođavanje budućih odluka na osnovu prethodnog iskustva.
+- Objašnjavanje razloga zbog kojih je agent generisao određeno upozorenje.
 
-## 2. Ciljevi projekta
-
-Glavni ciljevi su:
-
-- Omogućiti jednostavno evidentiranje prihoda i rashoda.
-- Pratiti ukupne i kategorijske budžete.
-- Omogućiti definisanje ciljeva štednje.
-- Kontinuirano analizirati finansijsko stanje korisnika.
-- Predviđati buduću potrošnju.
-- Prepoznavati neuobičajene transakcije.
-- Generisati upozorenja i personalizovane preporuke.
-- Prikupljati povratne informacije korisnika.
-- Prilagođavati prioritete preporuka na osnovu prethodnih rezultata.
-- Objasniti razloge zbog kojih je agent donio određenu odluku.
-
-## 3. Opseg i ograničenja sistema
+## 3. Opseg sistema
 
 Sistem će biti razvijen kao demonstracijska aplikacija za jednog korisnika.
 
-Osnovna ograničenja:
-
-- Podržana valuta je konvertibilna marka (KM/BAM).
-- Transakcije se unose ručno ili se učitavaju kao unaprijed generisani demonstracijski podaci.
-- Neće postojati povezivanje sa stvarnim bankovnim računima.
-- Sistem neće izvršavati finansijske transakcije.
-- Agent će pružati informativne analize i preporuke, a konačne odluke ostaju na korisniku.
-- Neće biti implementiran sistem registracije i prijave više korisnika.
-
-## 4. Funkcionalni zahtjevi
-
-### 4.1. Upravljanje transakcijama
-
 Korisnik može:
+- Evidentirati trenutno stanje novca.
+- Evidentirati izvore prihoda.
+- Unijeti očekivane datume i iznose uplata.
+- Evidentirati stvarne datume i iznose pristiglih uplata.
+- Evidentirati obaveze, iznose i datume dospijeća.
+- Pregledati upozorenja i prognoze agenta.
 
-- Dodati prihod ili rashod.
-- Izmijeniti postojeću transakciju.
-- Izbrisati transakciju.
-- Odabrati kategoriju.
-- Unijeti iznos, datum i opis.
-- Pregledati i filtrirati transakcije.
+Sistem neće biti povezan sa stvarnim bankovnim računima i neće automatski izvršavati plaćanja.
 
-Svaka transakcija sadrži iznos, tip, kategoriju, datum, opis i opcionalnu napomenu.
+Valuta sistema je konvertibilna marka (KM).
 
-### 4.2. Upravljanje budžetima
+## 4. Osnovno ponašanje agenta
 
-Korisnik može definisati:
+Agent kontinuirano radi u pozadini i svakodnevno provjerava finansijsko stanje korisnika.
 
-- Ukupni mjesečni budžet.
-- Budžete za pojedinačne kategorije.
-- Ciljeve štednje i željeni iznos.
+Njegov rad podijeljen je u četiri faze:
 
-Sistem prati ostvarenu potrošnju i napredak prema definisanim ciljevima.
+### Sense – Opažanje
+Agent prikuplja:
+- Trenutno stanje novca.
+- Očekivane prihode.
+- Historijske datume i iznose uplata.
+- Evidentirane finansijske obaveze.
+- Datume dospijeća obaveza.
 
-### 4.3. Inteligentni agent
+### Think – Razmišljanje
+Agent:
+- Analizira prethodna kašnjenja prihoda.
+- Procjenjuje vjerovatni datum naredne uplate.
+- Analizira buduće prilive i odlive novca.
+- Identifikuje datume kada bi stanje novca moglo postati nedovoljno za pokrivanje obaveza.
+- Procjenjuje pouzdanost svojih predviđanja.
 
-Agent automatski:
+### Act – Djelovanje
+Agent samostalno odlučuje:
+- Da li postoji rizik nedostatka sredstava.
+- Kada treba upozoriti korisnika.
+- Koje obaveze su ugrožene.
+- Koliki se nedostatak sredstava očekuje.
 
-- Analizira nove transakcije.
-- Prati potrošnju u odnosu na budžete.
-- Predviđa ukupne rashode do kraja mjeseca.
-- Detektuje neuobičajene transakcije.
-- Identifikuje kategorije sa povećanom potrošnjom.
-- Kreira upozorenja i preporuke.
-- Evidentira svoje odluke i objašnjenja.
+Upozorenja se čuvaju u bazi i prikazuju korisniku.
 
-### 4.4. Povratne informacije
+### Learn – Učenje
+Kada evidentirana uplata stvarno stigne, agent poredi očekivani i stvarni datum.
 
-Korisnik može prihvatiti ili odbiti preporuku.
+Na osnovu razlike:
+- Ažurira podatke o kašnjenjima pojedinih izvora prihoda.
+- Prilagođava procjenu budućih datuma uplata.
+- Poboljšava procjenu rizika.
+- Prilagođava vrijeme budućih upozorenja.
 
-Za prihvaćenu preporuku korisnik naknadno može potvrditi da li ju je primijenio.
+## 5. Predviđanje kašnjenja prihoda
 
-Sistem evidentira povratne informacije i prati promjene relevantnih troškova u narednom periodu.
+Svaki očekivani prihod ima:
+- Izvor prihoda.
+- Očekivani datum.
+- Očekivani iznos.
+- Stvarni datum uplate, kada uplata stigne.
+- Stvarni iznos, kada je poznat.
 
-### 4.5. Analitika
+Kašnjenje se računa kao razlika između stvarnog i očekivanog datuma uplate.
 
-Aplikacija omogućava:
+Agent vodi historiju kašnjenja za svaki izvor prihoda.
 
-- Pregled prihoda i rashoda.
-- Grafički prikaz potrošnje po kategorijama.
-- Poređenje različitih mjeseci.
-- Pregled prognozirane potrošnje.
-- Pregled ciljeva štednje.
-- Historiju upozorenja i preporuka.
-- Pregled prethodnih odluka agenta.
+Za početnu implementaciju koristit ćemo statističku analizu historijskih kašnjenja, uključujući prosjek, medijanu i varijabilnost. Kada postoji dovoljno podataka, koristit ćemo odgovarajući model mašinskog učenja za predviđanje budućeg kašnjenja.
 
-## 5. Kategorije transakcija
+Ako nema dovoljno historijskih podataka, agent će koristiti očekivani datum uz niži nivo pouzdanosti.
 
-Predviđene kategorije prihoda:
+## 6. Predviđanje finansijskog rizika
 
-- Plata.
-- Stipendija.
-- Freelance/honorar.
-- Ostalo.
+Agent analizira buduće stanje novca na osnovu:
 
-Predviđene kategorije rashoda:
+- Trenutnog stanja.
+- Očekivanih prihoda i procijenjenih datuma njihovog pristizanja.
+- Iznosa i datuma dospijeća obaveza.
 
-- Hrana.
-- Stanovanje.
-- Prijevoz.
-- Zdravlje.
-- Odjeća.
-- Restorani.
-- Zabava.
-- Računi.
-- Obrazovanje.
-- Ostalo.
+Na osnovu vremenskog slijeda priliva i odliva agent procjenjuje da li će stanje novca u nekom trenutku postati nedovoljno za pokrivanje dospjelih obaveza.
 
-Kategorije će biti moguće proširivati.
+Posebno će prikazivati:
+- Očekivani datum nedostatka sredstava.
+- Očekivani iznos nedostatka.
+- Obaveze koje doprinose riziku.
+- Procijenjeni datum sljedeće uplate.
+- Pouzdanost procjene.
 
-## 6. Demonstracijski podaci
+Očekivane uplate neće se tretirati kao siguran novac. Agent će uzimati u obzir mogućnost kašnjenja.
 
-Sistem će automatski generisati simulirane transakcije koje predstavljaju realistične finansijske aktivnosti.
+## 7. Povratne informacije i prilagođavanje
 
-Podaci će obuhvatati prihode i rashode za najmanje šest prethodnih mjeseci, kako bi agent imao historiju potrebnu za analizu i demonstraciju predviđanja.
+Sistem će evidentirati:
+- Očekivani datum uplate.
+- Stvarni datum uplate.
+- Predviđeno kašnjenje.
+- Stvarno kašnjenje.
+- Prethodno generisana upozorenja.
+- Rezultat prethodnih predviđanja.
 
-Demonstracijski podaci bit će jasno označeni i odvojeni od transakcija koje korisnik sam unese.
+Na osnovu ovih podataka agent prilagođava buduće procjene.
 
-## 7. Inteligentno ponašanje agenta
+Cilj je demonstrirati da agent nakon učenja iz prethodnih kašnjenja može ranije prepoznati budući rizik i promijeniti vrijeme upozoravanja.
 
-Agent koristi kombinaciju pravila odlučivanja i mašinskog učenja.
+## 8. Demonstracijski podaci
 
-### 7.1. Praćenje budžeta
+Sistem će koristiti automatski generisane simulirane podatke.
 
-Početni pragovi upozorenja:
+Podaci će obuhvatati:
+- Više izvora prihoda.
+- Različite očekivane datume uplata.
+- Simulirana kašnjenja uplata.
+- Mjesečne i jednokratne finansijske obaveze.
+- Različite iznose i datume dospijeća.
 
-- 70% iskorištenog budžeta: informativno upozorenje.
-- 90% iskorištenog budžeta: upozorenje visokog prioriteta.
-- Prekoračenje budžeta: upozorenje o prekoračenju.
+Simulacija će omogućiti demonstraciju ponašanja agenta prije i nakon učenja iz prethodnih uplata.
 
-Pragovi će biti konfigurabilni.
+## 9. Arhitektura
 
-Agent će sprječavati nepotrebno ponavljanje istih upozorenja.
+Sistem će koristiti jedan glavni FinancialAgentRunner koji se automatski pokreće zajedno sa FastAPI backend aplikacijom.
 
-### 7.2. Predviđanje potrošnje
+Runner izvršava metodu `step()`, pri čemu svaki Tick predstavlja jednu iteraciju agenta.
 
-Model mašinskog učenja analizira historijske transakcije i trenutnu potrošnju kako bi procijenio ukupne rashode do kraja mjeseca.
+Obrada će se pokretati:
+- Svakodnevno radi provjere finansijskog stanja.
+- Nakon evidentiranja nove uplate.
+- Nakon promjene obaveze ili očekivanog prihoda.
+- Nakon drugih relevantnih finansijskih događaja.
 
-Ako prognoza ukazuje na vjerovatno prekoračenje budžeta, agent može generisati preventivnu preporuku.
+API sloj služi za komunikaciju s frontend aplikacijom. Centralna logika donošenja odluka nalazi se u Agent Core komponenti.
 
-### 7.3. Detekcija anomalija
+Agent se izvršava pomoću Python asyncio mehanizma i uredno se zaustavlja pri gašenju backend aplikacije.
 
-Model za detekciju anomalija prepoznaje transakcije koje značajno odstupaju od uobičajenog ponašanja korisnika.
-
-Planirana je primjena algoritma Isolation Forest.
-
-Neuobičajena transakcija neće automatski biti označena kao pogrešna ili prevara, već će biti prikazana korisniku radi provjere.
-
-### 7.4. Personalizacija preporuka
-
-Agent evidentira prihvatanje i odbijanje preporuka, kao i naknadnu potvrdu njihove primjene.
-
-Na osnovu prethodnih rezultata prilagođava prioritete budućih preporuka.
-
-Personalizacija će u početnoj verziji koristiti jednostavan mehanizam prilagođavanja bodovanja preporuka, bez nepotrebno složenih algoritama.
-
-## 8. Arhitektura agenta
-
-Sistem će koristiti jedan glavni FinancialAgentRunner koji se pokreće automatski zajedno sa backend aplikacijom.
-
-Runner kontinuirano izvršava metodu `step()`, pri čemu svaki Tick predstavlja jednu prepoznatljivu iteraciju agenta.
-
-Jedan Tick obuhvata:
-
-1. Sense – preuzimanje događaja i prikupljanje relevantnih podataka.
-2. Think – analiza podataka, primjena pravila i ML modela te donošenje odluke.
-3. Act – kreiranje upozorenja, preporuke ili druge odgovarajuće akcije.
-4. Learn – obrada povratnih informacija i ažuriranje personalizacije kada postoje odgovarajući podaci.
-
-Learn nije obavezan dio svakog Tick-a. Izvršava se kada postoje nove povratne informacije ili kada su ispunjeni uslovi za ažuriranje modela.
-
-Runner neće sadržavati HTTP, routing ili korisničke interfejsne odgovornosti.
-
-API sloj služi za komunikaciju sa frontend aplikacijom, dok se odluke o ponašanju agenta nalaze u centralnoj logici.
-
-### 8.1. Obrada događaja
-
-Agent reaguje na događaje kao što su:
-
-- Dodavanje, izmjena ili brisanje transakcije.
-- Promjena budžeta.
-- Kreiranje cilja štednje.
-- Nova povratna informacija korisnika.
-- Periodična provjera finansijskog stanja.
-
-Događaji će se evidentirati u bazi i obrađivati kroz Runner.
-
-Sistem će koristiti identifikatore događaja i evidenciju obrade kako bi se smanjila mogućnost dupliranja akcija.
-
-### 8.2. Pokretanje i zaustavljanje
-
-Agent se pokreće automatski prilikom pokretanja FastAPI backend aplikacije.
-
-Za upravljanje pozadinskim izvršavanjem koristit će se Python asyncio i FastAPI lifespan mehanizam.
-
-Pri gašenju backend aplikacije agent će biti uredno zaustavljen.
-
-### 8.3. Učenje i ponovno treniranje
-
-Ažuriranje personalizacije i ponovno treniranje ML modela neće se izvršavati nakon svake pojedinačne povratne informacije.
-
-Sistem će periodično provjeravati postoje li uslovi za novo treniranje, uz minimalni broj novih relevantnih podataka.
-
-## 9. Tehnologije
+## 10. Tehnologije
 
 | Tehnologija | Namjena |
 |---|---|
 | Python | Glavni programski jezik |
-| FastAPI | Backend i REST API |
-| HTML | Struktura korisničkog interfejsa |
-| CSS | Stilizacija interfejsa |
-| JavaScript | Interakcija sa backendom |
-| SQLite | Relacijska baza podataka |
-| scikit-learn | Algoritmi mašinskog učenja |
-| pandas | Obrada i analiza podataka |
-| Chart.js | Grafički prikaz finansijskih podataka |
-| asyncio | Pozadinsko izvršavanje agenta |
-| Git i GitHub | Verzionar i praćenje razvoja |
+| FastAPI | Backend |
+| HTML, CSS, JavaScript | Frontend |
+| SQLite | Baza podataka |
+| SQLAlchemy | Rad s bazom |
+| pandas | Obrada podataka |
+| scikit-learn | Mašinsko učenje |
+| asyncio | Pozadinski rad agenta |
+| Chart.js | Grafički prikaz |
+| pytest | Testiranje |
+| GitHub | Verzionar projekta |
 
-## 10. Predložena struktura projekta
+## 11. Predložene komponente
 
-```text
-PersonalFinanceAgent/
-│
-├── backend/
-│   └── app/
-│       ├── main.py
-│       ├── core/
-│       │   ├── agent.py
-│       │   ├── runner.py
-│       │   └── decisions.py
-│       ├── database/
-│       │   ├── connection.py
-│       │   └── models.py
-│       ├── services/
-│       │   ├── transaction_service.py
-│       │   ├── budget_service.py
-│       │   └── recommendation_service.py
-│       ├── ml/
-│       │   ├── forecasting.py
-│       │   ├── anomaly_detection.py
-│       │   └── recommendation_learning.py
-│       └── api/
-│           ├── transactions.py
-│           ├── budgets.py
-│           └── agent.py
-│
-├── frontend/
-│   ├── index.html
-│   ├── css/
-│   │   └── style.css
-│   └── js/
-│       └── app.js
-│
-├── data/
-├── tests/
-├── requirements.txt
-├── .gitignore
-└── README.md
-```
+- `main.py` – pokretanje backend aplikacije.
+- `agent.py` – centralna logika agenta.
+- `runner.py` – kontinuirano izvršavanje Tick iteracija.
+- `decisions.py` – pravila donošenja odluka.
+- `models.py` – modeli baze podataka.
+- `income_service.py` – upravljanje prihodima.
+- `obligation_service.py` – upravljanje obavezama.
+- `cashflow_service.py` – analiza budućeg stanja novca.
+- `income_prediction.py` – predviđanje kašnjenja uplata.
+- `database/` – povezivanje i rad s bazom.
+- `api/` – HTTP endpointi.
 
-Struktura će se razvijati postepeno, u skladu sa implementacijom.
-
-## 11. Testiranje
+## 12. Testiranje
 
 Planirani testni scenariji:
 
-- Dodavanje i izmjena transakcija.
-- Ispravno izračunavanje potrošnje i budžeta.
-- Generisanje upozorenja na definisanim pragovima.
-- Predviđanje mogućeg prekoračenja budžeta.
-- Detekcija neuobičajenih transakcija.
-- Obrada događaja bez dupliranja akcija.
-- Sigurno završavanje Tick-a kada nema posla.
-- Evidentiranje korisničkih povratnih informacija.
-- Prilagođavanje prioriteta preporuka.
-- Provjera ponašanja sistema u slučaju nedostatka podataka ili greške ML modela.
-
-Rezultati ML modela bit će evaluirani na odgovarajućim testnim podacima, bez pretpostavke da je svaka prognoza tačna.
-
-## 12. Plan razvoja
-
-Razvoj će se odvijati u sljedećim fazama:
-
-1. Priprema Python okruženja i projekta.
-2. Implementacija baze podataka.
-3. Implementacija osnovnog backend API-ja.
-4. Implementacija Agent Core logike i Runnera.
-5. Implementacija prognoze potrošnje.
-6. Implementacija detekcije anomalija.
-7. Implementacija personalizacije i povratnih informacija.
-8. Implementacija frontend interfejsa.
-9. Testiranje i priprema demonstracije.
-
-Svaka veća faza bit će evidentirana kroz Git commitove.
+1. Korisnik ima dovoljno novca za sve obaveze.
+2. Očekivana uplata kasni i dolazi do rizika nedostatka novca.
+3. Agent predviđa datum mogućeg nedostatka sredstava.
+4. Agent generiše upozorenje prije dospijeća ugrožene obaveze.
+5. Stvarna uplata stigne kasnije od očekivane.
+6. Agent evidentira kašnjenje i prilagođava narednu procjenu.
+7. Agent nakon učenja ranije prepoznaje isti ili sličan rizik.
+8. Agent nema dovoljno historijskih podataka i prikazuje nižu pouzdanost.
+9. Agent nema novih događaja i završava Tick bez nepotrebnog rada.
+10. Isti događaj ne proizvodi duplirana upozorenja.
 
 ## 13. Očekivani rezultat
 
-Konačni rezultat je funkcionalna web aplikacija koja omogućava korisniku upravljanje ličnim finansijama i demonstrira rad autonomnog softverskog agenta.
+Rezultat projekta je funkcionalna web aplikacija sa autonomnim softverskim agentom koji predviđa rizik nedostatka novca kod korisnika s neredovnim prihodima.
 
-Agent će kontinuirano pratiti finansijske događaje, analizirati podatke, donositi odluke, izvršavati odgovarajuće akcije i prilagođavati preporuke na osnovu povratnih informacija.
+Glavna demonstracija projekta bit će poređenje ponašanja agenta prije i nakon učenja iz historijskih kašnjenja uplata.
 
-Poseban naglasak bit će na jasnom prikazu ciklusa Sense → Think → Act → Learn, objašnjivosti odluka i razdvajanju poslovne logike od API i korisničkog interfejsa.
+Agent će pokazati kako iskustvo mijenja njegove buduće procjene i odluke o pravovremenom upozoravanju korisnika.
