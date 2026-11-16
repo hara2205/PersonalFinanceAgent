@@ -114,3 +114,44 @@ def test_agent_deactivates_alert_when_shortage_disappears(db):
 
     assert result["alert_created"] is False
     assert old_alert.is_active is False
+
+def test_agent_assesses_high_financial_risk():
+    from datetime import date, timedelta
+    from app.decisions import assess_risk
+
+    result = assess_risk(
+        date.today() + timedelta(days=2),
+        Decimal("100.00"),
+        Decimal("200.00")
+    )
+
+    assert result["risk_level"] == "HIGH"
+    assert result["days_remaining"] == 2
+
+
+def test_agent_assesses_medium_financial_risk():
+    from datetime import date, timedelta
+    from app.decisions import assess_risk
+
+    result = assess_risk(
+        date.today() + timedelta(days=5),
+        Decimal("100.00"),
+        Decimal("200.00")
+    )
+
+    assert result["risk_level"] == "MEDIUM"
+    assert result["days_remaining"] == 5
+
+
+def test_agent_assesses_low_financial_risk():
+    from datetime import date, timedelta
+    from app.decisions import assess_risk
+
+    result = assess_risk(
+        date.today() + timedelta(days=10),
+        Decimal("100.00"),
+        Decimal("200.00")
+    )
+
+    assert result["risk_level"] == "LOW"
+    assert result["days_remaining"] == 10

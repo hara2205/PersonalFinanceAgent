@@ -5,7 +5,7 @@ from app.database import SessionLocal
 from app.models import AccountState, IncomePayment, Obligation
 from app.income_prediction import predict_income_date
 from app.cashflow_service import analyze_cashflow
-from app.decisions import make_agent_decision
+from app.decisions import make_agent_decision, assess_risk
 
 
 class FinancialAgentRunner:
@@ -61,7 +61,10 @@ class FinancialAgentRunner:
         }
 
     def think(self, db, financial_state):
-        """Analizira prihode i buduce novcane tokove."""
+        """
+        Analizira prihode, novcani tok
+        i nivo finansijskog rizika.
+        """
 
         income_predictions = []
 
@@ -69,21 +72,55 @@ class FinancialAgentRunner:
             prediction = predict_income_date(db, income)
             income_predictions.append(prediction)
 
+        # Analiza novcanog toka izvrsava se samo jednom.
         cashflow = analyze_cashflow(db)
+
+        risk = None
+
+        if cashflow["has_shortage"]:
+
+            first_shortage_event = next(
+                (
+                    event
+                    for event in cashflow["timeline"]
+                    if event["balance"] < 0
+                    and event["date"] == cashflow["first_shortage_date"]
+                ),
+                None
+            )
+
+            first_shortage_amount = (
+                abs(first_shortage_event["balance"])
+                if first_shortage_event
+                else cashflow["maximum_shortage"]
+            )
+
+            risk = assess_risk(
+                cashflow["first_shortage_date"],
+                first_shortage_amount,
+                cashflow["maximum_shortage"]
+            )
 
         return {
             "income_predictions": income_predictions,
-            "cashflow": cashflow
+            "cashflow": cashflow,
+            "risk": risk
         }
 
     def act(self, db, analysis):
-        """Donosi odluku o upozorenjima."""
+        """
+        Donosi odluku koristeci vec izvrsenu analizu.
+        """
 
-        return make_agent_decision(db)
+        return make_agent_decision(
+            db,
+            cashflow_result=analysis["cashflow"]
+        )
 
     def learn(self, db):
         """
         Uci iz stvarno primljenih historijskih uplata.
+
         Buduce zakazane uplate ne koriste se za ucenje.
         """
 
@@ -194,6 +231,24 @@ class FinancialAgentRunner:
                 print(
                     "Najveci predvidjeni manjak:",
                     f"{cashflow['maximum_shortage']:.2f} KM"
+                )
+
+                risk = analysis["risk"]
+
+                print(
+                    "Nivo finansijskog rizika:",
+                    risk["risk_level"]
+                )
+
+                print(
+                    "Vrijeme za reakciju:",
+                    risk["days_remaining"],
+                    "dana"
+                )
+
+                print(
+                    "Preporuka:",
+                    risk["recommendation"]
                 )
 
             else:
