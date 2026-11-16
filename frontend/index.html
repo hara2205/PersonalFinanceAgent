@@ -1,0 +1,197 @@
+
+<!DOCTYPE html>
+<html lang="bs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Finance Agent</title>
+    <link rel="stylesheet" href="/ui/style.css">
+</head>
+<body>
+
+<div class="app-layout">
+
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-icon">₥</div>
+            <div>
+                <h2>Finance Agent</h2>
+                <span>Personal finance assistant</span>
+            </div>
+        </div>
+
+        <nav>
+            <a class="nav-link active" href="#dashboard">▦ Dashboard</a>
+            <a class="nav-link" href="#incomes">↗ Prihodi</a>
+            <a class="nav-link" href="#obligations">↘ Obaveze</a>
+            <a class="nav-link" href="#forecast">⌁ Finansijska prognoza</a>
+            <a class="nav-link" href="#alerts">⚑ Upozorenja</a>
+        </nav>
+
+        <div class="sidebar-bottom">
+            <div class="agent-status">
+                <span class="status-dot"></span>
+                <div>
+                    <strong>Agent aktivan</strong>
+                    <small>Backend povezan</small>
+                </div>
+            </div>
+            <small>Personal Finance Agent v1.0</small>
+        </div>
+    </aside>
+
+    <main class="main-content">
+
+        <header class="topbar">
+            <div>
+                <p class="eyebrow">FINANSIJSKI PREGLED</p>
+                <h1>Kontrolna tabla</h1>
+                <p class="subtitle">Pregled vašeg finansijskog stanja i predviđanja agenta.</p>
+            </div>
+
+            <button id="run-agent" class="primary-button">
+                Pokreni analizu →
+            </button>
+        </header>
+
+        <div id="notification" class="notification hidden"></div>
+
+        <section class="stats-grid">
+
+            <article class="stat-card">
+                <div class="stat-heading">
+                    <span>Trenutno stanje</span>
+                    <span class="stat-icon blue">KM</span>
+                </div>
+                <h2 id="balance">-- KM</h2>
+                <p>Stanje na računu</p>
+            </article>
+
+            <article class="stat-card">
+                <div class="stat-heading">
+                    <span>Očekivani prihodi</span>
+                    <span class="stat-icon green">↗</span>
+                </div>
+                <h2 id="income-total">-- KM</h2>
+                <p id="income-count">0 evidentiranih uplata</p>
+            </article>
+
+            <article class="stat-card">
+                <div class="stat-heading">
+                    <span>Neplaćene obaveze</span>
+                    <span class="stat-icon orange">↘</span>
+                </div>
+                <h2 id="obligation-total">-- KM</h2>
+                <p id="obligation-count">0 aktivnih obaveza</p>
+            </article>
+
+            <article class="stat-card">
+                <div class="stat-heading">
+                    <span>Aktivna upozorenja</span>
+                    <span class="stat-icon red">!</span>
+                </div>
+                <h2 id="alert-count">0</h2>
+                <p>Upozorenja finansijskog agenta</p>
+            </article>
+
+        </section>
+
+        <section class="content-grid">
+
+            <article class="panel" id="incomes">
+                <div class="panel-header">
+                    <div>
+                        <h3>Očekivani prihodi</h3>
+                        <p>Pregled budućih uplata</p>
+                    </div>
+                    <span class="panel-symbol green">↗</span>
+                </div>
+
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Izvor</th>
+                                <th>Datum</th>
+                                <th>Iznos</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="income-table">
+                            <tr><td colspan="4">Učitavanje...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="panel" id="obligations">
+                <div class="panel-header">
+                    <div>
+                        <h3>Finansijske obaveze</h3>
+                        <p>Obaveze koje čekaju plaćanje</p>
+                    </div>
+                    <span class="panel-symbol orange">↘</span>
+                </div>
+
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Obaveza</th>
+                                <th>Rok</th>
+                                <th>Iznos</th>
+                            </tr>
+                        </thead>
+                        <tbody id="obligation-table">
+                            <tr><td colspan="3">Učitavanje...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+        </section>
+
+        <section class="content-grid lower-grid">
+
+            <article class="panel" id="forecast">
+                <div class="panel-header">
+                    <div>
+                        <h3>Finansijska prognoza</h3>
+                        <p>Predviđeni novčani tok</p>
+                    </div>
+                    <span class="panel-symbol blue">⌁</span>
+                </div>
+
+                <div id="forecast-summary" class="forecast-summary">
+                    Učitavanje prognoze...
+                </div>
+
+                <div id="timeline" class="timeline"></div>
+            </article>
+
+            <article class="panel" id="alerts">
+                <div class="panel-header">
+                    <div>
+                        <h3>Upozorenja agenta</h3>
+                        <p>Procijenjeni finansijski rizici</p>
+                    </div>
+                    <span class="panel-symbol red">⚑</span>
+                </div>
+
+                <div id="alerts-list">
+                    Učitavanje upozorenja...
+                </div>
+            </article>
+
+        </section>
+
+        <footer>
+            Personal Finance Agent · AI-powered liquidity prediction
+        </footer>
+
+    </main>
+</div>
+
+<script src="/ui/app.js"></script>
+</body>
+</html>

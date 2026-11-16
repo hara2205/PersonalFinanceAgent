@@ -1,5 +1,7 @@
 
 import asyncio
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, date
 from decimal import Decimal
@@ -172,7 +174,13 @@ app = FastAPI(
     version="1.2.0",
     lifespan=lifespan
 )
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
+app.mount(
+    "/ui",
+    StaticFiles(directory=FRONTEND_DIR, html=True),
+    name="frontend"
+)
 
 @app.get("/")
 def home():
