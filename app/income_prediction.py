@@ -13,7 +13,6 @@ def predict_income_date(db, income_payment):
     kasnjenja za isti izvor prihoda.
     """
 
-    # Dohvatamo prethodne uspjesno primljene uplate
     historical_payments = (
         db.query(IncomePayment)
         .filter(
@@ -25,14 +24,11 @@ def predict_income_date(db, income_payment):
         .all()
     )
 
-    # Racunamo kasnjenje svake prethodne uplate
     delays = [
         (payment.actual_date - payment.expected_date).days
         for payment in historical_payments
     ]
 
-    # Ako nemamo historijske podatke,
-    # koristimo ocekivani datum
     if not delays:
         return {
             "source": income_payment.source_name,
@@ -45,20 +41,17 @@ def predict_income_date(db, income_payment):
             "method": "Bez historijskih podataka"
         }
 
-    # Statisticka analiza prethodnih kasnjenja
     average_delay = mean(delays)
     median_delay = median(delays)
 
-    # Za procjenu koristimo zaokruzivanje na veci
-    # cijeli broj dana, kako ne bismo bili preoptimisticni
-    predicted_delay = math.ceil(median_delay)
+    # Koristimo prosjecno kasnjenje za predvidjanje.
+    predicted_delay = math.ceil(max(0, average_delay))
 
     predicted_date = (
         income_payment.expected_date
         + timedelta(days=predicted_delay)
     )
 
-    # Kvalitativna procjena pouzdanosti
     if len(delays) < 3:
         confidence = "Niska"
     elif len(delays) < 6:
@@ -74,7 +67,7 @@ def predict_income_date(db, income_payment):
         "median_delay": median_delay,
         "sample_count": len(delays),
         "confidence": confidence,
-        "method": "Historijska statisticka analiza"
+        "method": "Historijski prosjek kasnjenja"
     }
 
 
@@ -104,6 +97,7 @@ def main():
             print(f"Ocekivani datum: {result['expected_date']}")
             print(f"Predvidjeni datum: {result['predicted_date']}")
             print(f"Prosjecno kasnjenje: {result['average_delay']} dana")
+            print(f"Medijalno kasnjenje: {result['median_delay']} dana")
             print(f"Broj historijskih uplata: {result['sample_count']}")
             print(f"Pouzdanost: {result['confidence']}")
             print(f"Metoda: {result['method']}")
