@@ -29,27 +29,25 @@ class ReceiveIncomeRequest(BaseModel):
     actual_amount: Decimal = Field(gt=0)
 
 
-async def run_agent_once():
-    async with agent_lock:
-        return await asyncio.to_thread(agent.step)
-
-
-def activate_due_incomes():
+def activate_due_incomes(simulation_date: date | None = None):
     """
     Aktivira unaprijed evidentirane uplate
     kada dodje njihov datum.
+
+    Ako je proslijedjen simulation_date, koristi
+    simulirani datum umjesto stvarnog datuma.
     """
+
+    current_date = simulation_date or date.today()
 
     db = SessionLocal()
 
     try:
-        today = date.today()
-
         due_incomes = (
             db.query(IncomePayment)
             .filter(
                 IncomePayment.status == "ScheduledReceived",
-                IncomePayment.actual_date <= today
+                IncomePayment.actual_date <= current_date
             )
             .all()
         )
@@ -64,7 +62,9 @@ def activate_due_incomes():
         )
 
         if account is None:
-            raise ValueError("Finansijsko stanje racuna nije pronadjeno.")
+            raise ValueError(
+                "Finansijsko stanje racuna nije pronadjeno."
+            )
 
         activated_count = 0
 
@@ -77,6 +77,8 @@ def activate_due_incomes():
             )
 
             activated_count += 1
+
+        account.updated_at = datetime.now(timezone.utc)
 
         db.commit()
 
@@ -94,24 +96,38 @@ def activate_due_incomes():
         db.close()
 
 
+async def run_agent_once(simulation_date: date | None = None):
+    """
+    Aktivira dospjele buduce uplate, a zatim pokrece agenta.
+    """
+
+    async with agent_lock:
+
+        activated_count = await asyncio.to_thread(
+            activate_due_incomes,
+            simulation_date
+        )
+
+        result = await asyncio.to_thread(agent.step)
+
+        result["activated_income_count"] = activated_count
+
+        return result
+
+
 async def periodic_agent_runner():
+
     while True:
+
         try:
-            print("\n[BACKGROUND] Provjera buducih uplata...")
+            print("\n[BACKGROUND] Pokretanje finansijske analize...")
 
-            activated = await asyncio.to_thread(
-                activate_due_incomes
+            result = await run_agent_once()
+
+            print(
+                "[BACKGROUND] Aktivirano uplata:",
+                result["activated_income_count"]
             )
-
-            if activated > 0:
-                print(
-                    "[BACKGROUND] Pokretanje nove analize "
-                    "nakon aktiviranja uplata."
-                )
-
-            print("[BACKGROUND] Pokretanje finansijske analize...")
-
-            await run_agent_once()
 
             print("[BACKGROUND] Analiza je zavrsena.")
 
@@ -153,13 +169,14 @@ app = FastAPI(
         "API za pracenje finansijskih obaveza, "
         "predvidjanje prihoda i analizu likvidnosti."
     ),
-    version="1.1.0",
+    version="1.2.0",
     lifespan=lifespan
 )
 
 
 @app.get("/")
 def home():
+
     return {
         "application": "Personal Finance Agent",
         "status": "running",
@@ -169,6 +186,7 @@ def home():
 
 @app.get("/health")
 def health_check():
+
     return {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat()
@@ -176,14 +194,22 @@ def health_check():
 
 
 @app.post("/agent/run")
-async def run_agent_manually():
+async def run_agent_manually(
+    simulation_date: date | None = None
+):
 
     try:
-        result = await run_agent_once()
+        result = await run_agent_once(simulation_date)
 
         return {
             "status": "success",
             "message": "Agent je uspjesno izvrsio analizu.",
+            "simulation_date": (
+                simulation_date or date.today()
+            ).isoformat(),
+            "activated_income_count": result[
+                "activated_income_count"
+            ],
             "execution_time": result["execution_time"].isoformat(),
             "decision": {
                 "alert_created": result["decision"]["alert_created"],
@@ -197,7 +223,10 @@ async def run_agent_manually():
     except Exception as error:
         raise HTTPException(
             status_code=500,
-            detail=f"Greska prilikom izvrsavanja agenta: {str(error)}"
+            detail=(
+                "Greska prilikom izvrsavanja agenta: "
+                f"{str(error)}"
+            )
         )
 
 
@@ -339,7 +368,10 @@ def get_financial_forecast():
     except Exception as error:
         raise HTTPException(
             status_code=500,
-            detail=f"Greska prilikom analize novcanog toka: {str(error)}"
+            detail=(
+                "Greska prilikom analize novcanog toka: "
+                f"{str(error)}"
+            )
         )
 
     finally:
@@ -443,7 +475,10 @@ async def receive_income(
 
         raise HTTPException(
             status_code=500,
-            detail=f"Greska prilikom evidentiranja prihoda: {str(error)}"
+            detail=(
+                "Greska prilikom evidentiranja prihoda: "
+                f"{str(error)}"
+            )
         )
 
     finally:

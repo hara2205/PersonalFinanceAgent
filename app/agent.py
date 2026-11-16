@@ -17,9 +17,7 @@ class FinancialAgentRunner:
     """
 
     def sense(self, db):
-        """
-        Prikuplja trenutno finansijsko stanje.
-        """
+        """Prikuplja trenutno finansijsko stanje."""
 
         account = (
             db.query(AccountState)
@@ -38,6 +36,14 @@ class FinancialAgentRunner:
             .all()
         )
 
+        scheduled_incomes = (
+            db.query(IncomePayment)
+            .filter(
+                IncomePayment.status == "ScheduledReceived"
+            )
+            .all()
+        )
+
         pending_obligations = (
             db.query(Obligation)
             .filter(Obligation.status == "Pending")
@@ -47,15 +53,15 @@ class FinancialAgentRunner:
         return {
             "balance": account.current_balance,
             "pending_income_count": len(pending_incomes),
+            "scheduled_income_count": len(scheduled_incomes),
             "pending_obligation_count": len(pending_obligations),
             "pending_incomes": pending_incomes,
+            "scheduled_incomes": scheduled_incomes,
             "pending_obligations": pending_obligations
         }
 
     def think(self, db, financial_state):
-        """
-        Analizira prihode i buduce novcane tokove.
-        """
+        """Analizira prihode i buduce novcane tokove."""
 
         income_predictions = []
 
@@ -71,18 +77,14 @@ class FinancialAgentRunner:
         }
 
     def act(self, db, analysis):
-        """
-        Donosi odluku o kreiranju ili azuriranju upozorenja.
-        """
+        """Donosi odluku o upozorenjima."""
 
         return make_agent_decision(db)
 
     def learn(self, db):
         """
-        Analizira historijska iskustva o kasnjenju prihoda.
-
-        Prediktor koristi evidentirane stvarne uplate
-        za prilagodjavanje buducih predvidjanja.
+        Uci iz stvarno primljenih historijskih uplata.
+        Buduce zakazane uplate ne koriste se za ucenje.
         """
 
         received_payments = (
@@ -111,9 +113,7 @@ class FinancialAgentRunner:
         return learned_sources
 
     def step(self):
-        """
-        Izvrsava jedan kompletan ciklus agenta.
-        """
+        """Izvrsava jedan kompletan ciklus agenta."""
 
         db = SessionLocal()
 
@@ -124,10 +124,7 @@ class FinancialAgentRunner:
             print(" PERSONAL FINANCE AGENT")
             print("====================================")
 
-            # ==================================
-            # 1. SENSE - PRIKUPLJANJE PODATAKA
-            # ==================================
-
+            # 1. SENSE
             financial_state = self.sense(db)
 
             print("\n[1] SENSE - PRIKUPLJANJE PODATAKA")
@@ -143,14 +140,16 @@ class FinancialAgentRunner:
             )
 
             print(
+                "Unaprijed evidentirane buduce uplate:",
+                financial_state["scheduled_income_count"]
+            )
+
+            print(
                 "Neplacene obaveze:",
                 financial_state["pending_obligation_count"]
             )
 
-            # ==================================
-            # 2. THINK - ANALIZA I PREDVIDJANJE
-            # ==================================
-
+            # 2. THINK
             analysis = self.think(db, financial_state)
 
             print("\n[2] THINK - ANALIZA I PREDVIDJANJE")
@@ -166,8 +165,6 @@ class FinancialAgentRunner:
 
             if cashflow["has_shortage"]:
 
-                # Pronalazimo dogadjaj koji izaziva
-                # prvi negativan saldo.
                 first_shortage_event = next(
                     (
                         event
@@ -202,10 +199,7 @@ class FinancialAgentRunner:
             else:
                 print("Nije predvidjen manjak novca.")
 
-            # ==================================
-            # 3. ACT - DONOSENJE ODLUKE
-            # ==================================
-
+            # 3. ACT
             decision = self.act(db, analysis)
 
             print("\n[3] ACT - ODLUKA AGENTA")
@@ -222,10 +216,7 @@ class FinancialAgentRunner:
             print("\nPoruka agenta:")
             print(decision["message"])
 
-            # ==================================
-            # 4. LEARN - ANALIZA ISKUSTVA
-            # ==================================
-
+            # 4. LEARN
             learned_sources = self.learn(db)
 
             print("\n[4] LEARN - HISTORIJSKO ISKUSTVO")
@@ -242,10 +233,6 @@ class FinancialAgentRunner:
                     f"prosjecno kasnjenje "
                     f"{average_delay:.2f} dana"
                 )
-
-            # ==================================
-            # ZAVRSETAK CIKLUSA
-            # ==================================
 
             print("\nVrijeme izvrsavanja:", execution_time)
             print("====================================")
