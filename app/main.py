@@ -6,39 +6,32 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
 
 from app.agent import FinancialAgentRunner
+from app.database import SessionLocal
+from app.models import (
+    AccountState,
+    IncomePayment,
+    Obligation,
+    AgentAlert
+)
 
 
 # Agent se izvrsava jednom dnevno.
 AGENT_INTERVAL = 24 * 60 * 60
 
-# Jedna instanca centralnog agenta.
 agent = FinancialAgentRunner()
-
-# Sprjecava istovremeno izvrsavanje vise ciklusa.
 agent_lock = asyncio.Lock()
 
 
 async def run_agent_once():
-    """
-    Pokrece jedan ciklus finansijskog agenta.
-
-    Koristimo poseban thread kako sinhroni rad
-    s bazom ne bi blokirao FastAPI event loop.
-    """
+    """Pokrece jedan ciklus finansijskog agenta."""
 
     async with agent_lock:
         result = await asyncio.to_thread(agent.step)
-
         return result
 
 
 async def periodic_agent_runner():
-    """
-    Automatski izvrsava agenta svakih 24 sata.
-
-    Prva analiza izvrsava se odmah nakon pokretanja
-    FastAPI aplikacije.
-    """
+    """Automatsko izvrsavanje agenta svakih 24 sata."""
 
     while True:
         try:
@@ -54,18 +47,12 @@ async def periodic_agent_runner():
                 error
             )
 
-        # Cekamo 24 sata do naredne analize.
         await asyncio.sleep(AGENT_INTERVAL)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Upravljanje zivotnim ciklusom aplikacije.
-
-    Prilikom pokretanja backend-a pokrecemo
-    pozadinski zadatak agenta.
-    """
+    """Pokretanje i zaustavljanje pozadinskog agenta."""
 
     print("\n====================================")
     print(" POKRETANJE PERSONAL FINANCE BACKEND-a")
@@ -77,8 +64,6 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Zaustavljanje pozadinskog zadatka
-    # prilikom gasenja aplikacije.
     background_task.cancel()
 
     try:
@@ -89,7 +74,6 @@ async def lifespan(app: FastAPI):
     print("[BACKEND] Aplikacija je ugasena.")
 
 
-# Kreiranje FastAPI aplikacije.
 app = FastAPI(
     title="Personal Finance Agent API",
     description=(
@@ -103,10 +87,6 @@ app = FastAPI(
 
 @app.get("/")
 def home():
-    """
-    Pocetna ruta API-ja.
-    """
-
     return {
         "application": "Personal Finance Agent",
         "status": "running",
@@ -116,10 +96,6 @@ def home():
 
 @app.get("/health")
 def health_check():
-    """
-    Provjera dostupnosti backend aplikacije.
-    """
-
     return {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat()
@@ -128,9 +104,7 @@ def health_check():
 
 @app.post("/agent/run")
 async def run_agent_manually():
-    """
-    Rucno pokretanje jednog ciklusa agenta.
-    """
+    """Rucno pokretanje jednog ciklusa agenta."""
 
     try:
         result = await run_agent_once()
@@ -153,3 +127,102 @@ async def run_agent_manually():
             status_code=500,
             detail=f"Greska prilikom izvrsavanja agenta: {str(error)}"
         )
+
+
+@app.get("/finance/overview")
+def get_financial_overview():
+    """
+    Vraca pregled trenutnog finansijskog stanja,
+    ocekivanih prihoda i neplacenih obaveza.
+    """
+
+    db = SessionLocal()
+
+    try:
+        account = db.query(AccountState).first()
+
+        incomes = (
+            db.query(IncomePayment)
+            .filter(IncomePayment.status == "Expected")
+            .order_by(IncomePayment.expected_date)
+            .all()
+        )
+
+        obligations = (
+            db.query(Obligation)
+            .filter(Obligation.status == "Pending")
+            .order_by(Obligation.due_date)
+            .all()
+        )
+
+        active_alerts_count = (
+            db.query(AgentAlert)
+            .filter(AgentAlert.is_active == True)
+            .count()
+        )
+
+        return {
+            "current_balance": (
+                float(account.current_balance)
+                if account else 0.0
+            ),
+            "expected_incomes": [
+                {
+                    "id": income.id,
+                    "source": income.source_name,
+                    "expected_date": income.expected_date.isoformat(),
+                    "expected_amount": float(income.expected_amount)
+                }
+                for income in incomes
+            ],
+            "pending_obligations": [
+                {
+                    "id": obligation.id,
+                    "title": obligation.title,
+                    "due_date": obligation.due_date.isoformat(),
+                    "amount": float(obligation.amount)
+                }
+                for obligation in obligations
+            ],
+            "active_alerts_count": active_alerts_count
+        }
+
+    finally:
+        db.close()
+
+
+@app.get("/alerts")
+def get_active_alerts():
+    """Vraca sva trenutno aktivna upozorenja agenta."""
+
+    db = SessionLocal()
+
+    try:
+        alerts = (
+            db.query(AgentAlert)
+            .filter(AgentAlert.is_active == True)
+            .order_by(AgentAlert.created_at.desc())
+            .all()
+        )
+
+        return {
+            "total": len(alerts),
+            "alerts": [
+                {
+                    "id": alert.id,
+                    "created_at": alert.created_at.isoformat(),
+                    "shortage_date": (
+                        alert.shortage_date.isoformat()
+                        if alert.shortage_date else None
+                    ),
+                    "shortage_amount": float(alert.shortage_amount),
+                    "message": alert.message,
+                    "confidence": alert.confidence,
+                    "is_active": alert.is_active
+                }
+                for alert in alerts
+            ]
+        }
+
+    finally:
+        db.close()
