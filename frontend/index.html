@@ -22,6 +22,7 @@
 
         <nav>
             <a class="nav-link active" href="#dashboard">▦ Dashboard</a>
+            <a class="nav-link" href="#management">＋ Upravljanje finansijama</a>
             <a class="nav-link" href="#incomes">↗ Prihodi</a>
             <a class="nav-link" href="#obligations">↘ Obaveze</a>
             <a class="nav-link" href="#forecast">⌁ Finansijska prognoza</a>
@@ -42,11 +43,13 @@
 
     <main class="main-content">
 
-        <header class="topbar">
+        <header class="topbar" id="dashboard">
             <div>
                 <p class="eyebrow">FINANSIJSKI PREGLED</p>
                 <h1>Kontrolna tabla</h1>
-                <p class="subtitle">Pregled vašeg finansijskog stanja i predviđanja agenta.</p>
+                <p class="subtitle">
+                    Pregled vašeg finansijskog stanja i predviđanja agenta.
+                </p>
             </div>
 
             <button id="run-agent" class="primary-button">
@@ -55,6 +58,8 @@
         </header>
 
         <div id="notification" class="notification hidden"></div>
+
+        <!-- FINANSIJSKE STATISTIKE -->
 
         <section class="stats-grid">
 
@@ -95,6 +100,190 @@
             </article>
 
         </section>
+
+        <!-- UPRAVLJANJE FINANSIJAMA -->
+
+        <section id="management" class="management-section">
+
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">UPRAVLJANJE PODACIMA</p>
+                    <h2>Upravljanje finansijama</h2>
+                    <p class="subtitle">
+                        Evidentirajte očekivane prihode, obaveze i primljene uplate.
+                    </p>
+                </div>
+            </div>
+
+            <div class="management-grid">
+
+                <!-- FORMA ZA DODAVANJE PRIHODA -->
+
+                <article class="panel form-panel">
+
+                    <div class="panel-header">
+                        <div>
+                            <h3>Novi prihod</h3>
+                            <p>Dodavanje očekivane uplate</p>
+                        </div>
+                        <span class="panel-symbol green">↗</span>
+                    </div>
+
+                    <form id="income-form">
+
+                        <div class="form-group">
+                            <label for="income-source">Izvor prihoda</label>
+                            <input
+                                type="text"
+                                id="income-source"
+                                placeholder="Npr. Plata, honorar..."
+                                maxlength="100"
+                                required
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="income-date">Očekivani datum</label>
+                            <input
+                                type="date"
+                                id="income-date"
+                                required
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="income-amount">Iznos (KM)</label>
+                            <input
+                                type="number"
+                                id="income-amount"
+                                placeholder="Npr. 1500"
+                                min="0.01"
+                                step="0.01"
+                                required
+                            >
+                        </div>
+
+                        <button type="submit" class="primary-button form-button">
+                            Dodaj prihod
+                        </button>
+
+                    </form>
+
+                </article>
+
+                <!-- FORMA ZA DODAVANJE OBAVEZE -->
+
+                <article class="panel form-panel">
+
+                    <div class="panel-header">
+                        <div>
+                            <h3>Nova obaveza</h3>
+                            <p>Dodavanje finansijske obaveze</p>
+                        </div>
+                        <span class="panel-symbol orange">↘</span>
+                    </div>
+
+                    <form id="obligation-form">
+
+                        <div class="form-group">
+                            <label for="obligation-title">Naziv obaveze</label>
+                            <input
+                                type="text"
+                                id="obligation-title"
+                                placeholder="Npr. Stanarina, računi..."
+                                maxlength="150"
+                                required
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="obligation-date">Datum dospijeća</label>
+                            <input
+                                type="date"
+                                id="obligation-date"
+                                required
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="obligation-amount">Iznos (KM)</label>
+                            <input
+                                type="number"
+                                id="obligation-amount"
+                                placeholder="Npr. 500"
+                                min="0.01"
+                                step="0.01"
+                                required
+                            >
+                        </div>
+
+                        <button type="submit" class="primary-button form-button">
+                            Dodaj obavezu
+                        </button>
+
+                    </form>
+
+                </article>
+
+                <!-- FORMA ZA EVIDENTIRANJE PRIHODA -->
+
+                <article class="panel form-panel">
+
+                    <div class="panel-header">
+                        <div>
+                            <h3>Evidentiraj uplatu</h3>
+                            <p>Unos stvarno primljenog prihoda</p>
+                        </div>
+                        <span class="panel-symbol blue">✓</span>
+                    </div>
+
+                    <form id="receive-income-form">
+
+                        <div class="form-group">
+                            <label for="receive-income-select">
+                                Očekivani prihod
+                            </label>
+
+                            <select id="receive-income-select" required>
+                                <option value="">
+                                    Odaberite prihod...
+                                </option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="actual-date">Stvarni datum uplate</label>
+                            <input
+                                type="date"
+                                id="actual-date"
+                                required
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="actual-amount">Stvarni iznos (KM)</label>
+                            <input
+                                type="number"
+                                id="actual-amount"
+                                placeholder="Npr. 1500"
+                                min="0.01"
+                                step="0.01"
+                                required
+                            >
+                        </div>
+
+                        <button type="submit" class="primary-button form-button">
+                            Evidentiraj uplatu
+                        </button>
+
+                    </form>
+
+                </article>
+
+            </div>
+        </section>
+
+        <!-- TABELE -->
 
         <section class="content-grid">
 
@@ -150,6 +339,8 @@
             </article>
 
         </section>
+
+        <!-- PROGNOZA I UPOZORENJA -->
 
         <section class="content-grid lower-grid">
 

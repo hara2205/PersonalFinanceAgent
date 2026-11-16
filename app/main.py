@@ -1,12 +1,12 @@
 
 import asyncio
 from pathlib import Path
-from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, date
 from decimal import Decimal
 
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.agent import FinancialAgentRunner
@@ -26,19 +26,32 @@ agent = FinancialAgentRunner()
 agent_lock = asyncio.Lock()
 
 
+# ==========================================
+# PYDANTIC MODELI ZA ZAHTJEVE
+# ==========================================
+
+class CreateIncomeRequest(BaseModel):
+    source_name: str = Field(min_length=1, max_length=100)
+    expected_date: date
+    expected_amount: Decimal = Field(gt=0)
+
+
+class CreateObligationRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=150)
+    amount: Decimal = Field(gt=0)
+    due_date: date
+
+
 class ReceiveIncomeRequest(BaseModel):
     actual_date: date
     actual_amount: Decimal = Field(gt=0)
 
 
-def activate_due_incomes(simulation_date: date | None = None):
-    """
-    Aktivira unaprijed evidentirane uplate
-    kada dodje njihov datum.
+# ==========================================
+# AKTIVIRANJE BUDUCIH UPLATA
+# ==========================================
 
-    Ako je proslijedjen simulation_date, koristi
-    simulirani datum umjesto stvarnog datuma.
-    """
+def activate_due_incomes(simulation_date: date | None = None):
 
     current_date = simulation_date or date.today()
 
@@ -98,10 +111,11 @@ def activate_due_incomes(simulation_date: date | None = None):
         db.close()
 
 
+# ==========================================
+# POKRETANJE AGENTA
+# ==========================================
+
 async def run_agent_once(simulation_date: date | None = None):
-    """
-    Aktivira dospjele buduce uplate, a zatim pokrece agenta.
-    """
 
     async with agent_lock:
 
@@ -142,6 +156,10 @@ async def periodic_agent_runner():
         await asyncio.sleep(AGENT_INTERVAL)
 
 
+# ==========================================
+# LIFESPAN
+# ==========================================
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
@@ -165,15 +183,21 @@ async def lifespan(app: FastAPI):
     print("[BACKEND] Aplikacija je ugasena.")
 
 
+# ==========================================
+# FASTAPI APLIKACIJA
+# ==========================================
+
 app = FastAPI(
     title="Personal Finance Agent API",
     description=(
         "API za pracenje finansijskih obaveza, "
         "predvidjanje prihoda i analizu likvidnosti."
     ),
-    version="1.2.0",
+    version="1.3.0",
     lifespan=lifespan
 )
+
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 app.mount(
@@ -181,6 +205,11 @@ app.mount(
     StaticFiles(directory=FRONTEND_DIR, html=True),
     name="frontend"
 )
+
+
+# ==========================================
+# POMOCNA RUTA
+# ==========================================
 
 @app.get("/")
 def home():
@@ -200,6 +229,10 @@ def health_check():
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
+
+# ==========================================
+# RUCNO POKRETANJE AGENTA
+# ==========================================
 
 @app.post("/agent/run")
 async def run_agent_manually(
@@ -237,6 +270,131 @@ async def run_agent_manually(
             )
         )
 
+
+# ==========================================
+# DODAVANJE OCEKIVANOG PRIHODA
+# ==========================================
+
+@app.post("/incomes")
+async def create_income(request: CreateIncomeRequest):
+
+    db = SessionLocal()
+
+    try:
+        income = IncomePayment(
+            source_name=request.source_name.strip(),
+            expected_date=request.expected_date,
+            expected_amount=request.expected_amount,
+            status="Expected"
+        )
+
+        if not income.source_name:
+            raise HTTPException(
+                status_code=422,
+                detail="Izvor prihoda ne moze biti prazan."
+            )
+
+        db.add(income)
+        db.commit()
+        db.refresh(income)
+
+        result = {
+            "status": "success",
+            "message": "Ocekivani prihod je uspjesno dodan.",
+            "income": {
+                "id": income.id,
+                "source": income.source_name,
+                "expected_date": income.expected_date.isoformat(),
+                "expected_amount": float(income.expected_amount),
+                "status": income.status
+            }
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as error:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Greska prilikom dodavanja prihoda: {str(error)}"
+        )
+
+    finally:
+        db.close()
+
+    await run_agent_once()
+
+    return result
+
+
+# ==========================================
+# DODAVANJE FINANSIJSKE OBAVEZE
+# ==========================================
+
+@app.post("/obligations")
+async def create_obligation(request: CreateObligationRequest):
+
+    db = SessionLocal()
+
+    try:
+        obligation = Obligation(
+            title=request.title.strip(),
+            amount=request.amount,
+            due_date=request.due_date,
+            status="Pending"
+        )
+
+        if not obligation.title:
+            raise HTTPException(
+                status_code=422,
+                detail="Naziv obaveze ne moze biti prazan."
+            )
+
+        db.add(obligation)
+        db.commit()
+        db.refresh(obligation)
+
+        result = {
+            "status": "success",
+            "message": "Finansijska obaveza je uspjesno dodana.",
+            "obligation": {
+                "id": obligation.id,
+                "title": obligation.title,
+                "amount": float(obligation.amount),
+                "due_date": obligation.due_date.isoformat(),
+                "status": obligation.status
+            }
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as error:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Greska prilikom dodavanja obaveze: "
+                f"{str(error)}"
+            )
+        )
+
+    finally:
+        db.close()
+
+    await run_agent_once()
+
+    return result
+
+
+# ==========================================
+# FINANSIJSKI PREGLED
+# ==========================================
 
 @app.get("/finance/overview")
 def get_financial_overview():
@@ -310,6 +468,10 @@ def get_financial_overview():
         db.close()
 
 
+# ==========================================
+# AKTIVNA UPOZORENJA
+# ==========================================
+
 @app.get("/alerts")
 def get_active_alerts():
 
@@ -342,6 +504,10 @@ def get_active_alerts():
     finally:
         db.close()
 
+
+# ==========================================
+# FINANSIJSKA PROGNOZA
+# ==========================================
 
 @app.get("/finance/forecast")
 def get_financial_forecast():
@@ -385,6 +551,10 @@ def get_financial_forecast():
     finally:
         db.close()
 
+
+# ==========================================
+# EVIDENTIRANJE PRIMLJENOG PRIHODA
+# ==========================================
 
 @app.post("/incomes/{income_id}/receive")
 async def receive_income(

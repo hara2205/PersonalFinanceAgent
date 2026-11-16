@@ -1,6 +1,10 @@
 
 const API = "";
 
+// ==========================================
+// POMOCNE FUNKCIJE
+// ==========================================
+
 function formatMoney(value) {
     return Number(value).toLocaleString("bs-BA", {
         minimumFractionDigits: 2,
@@ -14,6 +18,15 @@ function formatDate(value) {
     return new Date(value + "T00:00:00").toLocaleDateString("bs-BA");
 }
 
+function todayString() {
+    const now = new Date();
+    const localDate = new Date(
+        now.getTime() - now.getTimezoneOffset() * 60000
+    );
+
+    return localDate.toISOString().split("T")[0];
+}
+
 function showNotification(message, type = "success") {
     const element = document.getElementById("notification");
 
@@ -23,15 +36,48 @@ function showNotification(message, type = "success") {
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-async function getData(endpoint) {
-    const response = await fetch(`${API}${endpoint}`);
+async function requestData(endpoint, options = {}) {
+    const response = await fetch(`${API}${endpoint}`, options);
+
+    const result = await response.json();
 
     if (!response.ok) {
-        throw new Error(`Greška prilikom učitavanja: ${endpoint}`);
+        throw new Error(
+            result.detail || "Došlo je do greške prilikom komunikacije s backendom."
+        );
     }
 
-    return response.json();
+    return result;
 }
+
+async function getData(endpoint) {
+    return requestData(endpoint);
+}
+
+async function postData(endpoint, data) {
+    return requestData(endpoint, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+    });
+}
+
+function escapeHTML(value) {
+    return String(value).replace(/[&<>"']/g, character => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+    })[character]);
+}
+
+
+// ==========================================
+// FINANSIJSKI PREGLED
+// ==========================================
 
 async function loadOverview() {
     const data = await getData("/finance/overview");
@@ -66,7 +112,13 @@ async function loadOverview() {
 
     renderIncomes(data.expected_incomes);
     renderObligations(data.pending_obligations);
+    renderReceiveIncomeOptions(data.expected_incomes);
 }
+
+
+// ==========================================
+// PRIKAZ PRIHODA
+// ==========================================
 
 function renderIncomes(incomes) {
     const table = document.getElementById("income-table");
@@ -91,11 +143,20 @@ function renderIncomes(incomes) {
                 <td><strong>${escapeHTML(income.source)}</strong></td>
                 <td>${formatDate(income.expected_date)}</td>
                 <td>${formatMoney(income.expected_amount)}</td>
-                <td><span class="status ${statusClass}">${statusText}</span></td>
+                <td>
+                    <span class="status ${statusClass}">
+                        ${statusText}
+                    </span>
+                </td>
             </tr>
         `;
     }).join("");
 }
+
+
+// ==========================================
+// PRIKAZ OBAVEZA
+// ==========================================
 
 function renderObligations(obligations) {
     const table = document.getElementById("obligation-table");
@@ -115,6 +176,62 @@ function renderObligations(obligations) {
     `).join("");
 }
 
+
+// ==========================================
+// IZBOR PRIHODA ZA EVIDENTIRANJE UPLATE
+// ==========================================
+
+function renderReceiveIncomeOptions(incomes) {
+    const select = document.getElementById("receive-income-select");
+
+    const previousValue = select.value;
+
+    const availableIncomes = incomes.filter(
+        income => income.status === "Expected"
+    );
+
+    select.innerHTML = `
+        <option value="">Odaberite prihod...</option>
+        ${availableIncomes.map(income => `
+            <option
+                value="${income.id}"
+                data-amount="${income.expected_amount}"
+            >
+                ${escapeHTML(income.source)}
+                - ${formatMoney(income.expected_amount)}
+                (${formatDate(income.expected_date)})
+            </option>
+        `).join("")}
+    `;
+
+    if (
+        previousValue &&
+        availableIncomes.some(
+            income => String(income.id) === previousValue
+        )
+    ) {
+        select.value = previousValue;
+    }
+
+    updateActualAmount();
+}
+
+function updateActualAmount() {
+    const select = document.getElementById("receive-income-select");
+    const amountInput = document.getElementById("actual-amount");
+
+    const selectedOption = select.options[select.selectedIndex];
+
+    if (selectedOption && selectedOption.dataset.amount) {
+        amountInput.value = selectedOption.dataset.amount;
+    }
+}
+
+
+// ==========================================
+// FINANSIJSKA PROGNOZA
+// ==========================================
+
 async function loadForecast() {
     const data = await getData("/finance/forecast");
 
@@ -122,13 +239,17 @@ async function loadForecast() {
 
     if (data.has_shortage) {
         summary.innerHTML = `
-            <strong style="color:#df5656">Predviđen finansijski manjak</strong><br>
+            <strong style="color:#df5656">
+                Predviđen finansijski manjak
+            </strong><br>
             Prvi manjak: ${formatDate(data.first_shortage_date)}<br>
             Najveći manjak: ${formatMoney(data.maximum_shortage)}
         `;
     } else {
         summary.innerHTML = `
-            <strong style="color:#16a675">Nije predviđen manjak novca</strong><br>
+            <strong style="color:#16a675">
+                Nije predviđen manjak novca
+            </strong><br>
             Početno stanje: ${formatMoney(data.starting_balance)}<br>
             Predviđeno završno stanje: ${formatMoney(data.final_balance)}
         `;
@@ -147,10 +268,15 @@ async function loadForecast() {
 
         return `
             <div class="timeline-item">
-                <span class="timeline-date">${formatDate(event.date)}</span>
-                <span class="${isIncome ? "income-text" : "obligation-text"}">
-                    ${isIncome ? "↗" : "↘"} ${escapeHTML(event.description)}
+                <span class="timeline-date">
+                    ${formatDate(event.date)}
                 </span>
+
+                <span class="${isIncome ? "income-text" : "obligation-text"}">
+                    ${isIncome ? "↗" : "↘"}
+                    ${escapeHTML(event.description)}
+                </span>
+
                 <span class="timeline-amount ${isIncome ? "income-text" : "obligation-text"}">
                     ${isIncome ? "+" : "-"}${formatMoney(event.amount)}
                 </span>
@@ -158,6 +284,11 @@ async function loadForecast() {
         `;
     }).join("");
 }
+
+
+// ==========================================
+// UPOZORENJA AGENTA
+// ==========================================
 
 async function loadAlerts() {
     const data = await getData("/alerts");
@@ -181,15 +312,10 @@ async function loadAlerts() {
     `).join("");
 }
 
-function escapeHTML(value) {
-    return String(value).replace(/[&<>"']/g, character => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;"
-    })[character]);
-}
+
+// ==========================================
+// OSVJEZAVANJE DASHBOARD-A
+// ==========================================
 
 async function refreshDashboard() {
     try {
@@ -203,6 +329,142 @@ async function refreshDashboard() {
     }
 }
 
+
+// ==========================================
+// DODAVANJE OCEKIVANOG PRIHODA
+// ==========================================
+
+async function createIncome(event) {
+    event.preventDefault();
+
+    const button = event.submitter;
+    button.disabled = true;
+    button.textContent = "Dodavanje...";
+
+    try {
+        const request = {
+            source_name: document.getElementById("income-source").value.trim(),
+            expected_date: document.getElementById("income-date").value,
+            expected_amount: Number(
+                document.getElementById("income-amount").value
+            )
+        };
+
+        const result = await postData("/incomes", request);
+
+        document.getElementById("income-form").reset();
+
+        await refreshDashboard();
+
+        showNotification(
+            result.message + " Agent je ponovo izvršio analizu.",
+            "success"
+        );
+
+    } catch (error) {
+        showNotification(error.message, "error");
+    } finally {
+        button.disabled = false;
+        button.textContent = "Dodaj prihod";
+    }
+}
+
+
+// ==========================================
+// DODAVANJE FINANSIJSKE OBAVEZE
+// ==========================================
+
+async function createObligation(event) {
+    event.preventDefault();
+
+    const button = event.submitter;
+    button.disabled = true;
+    button.textContent = "Dodavanje...";
+
+    try {
+        const request = {
+            title: document.getElementById("obligation-title").value.trim(),
+            amount: Number(
+                document.getElementById("obligation-amount").value
+            ),
+            due_date: document.getElementById("obligation-date").value
+        };
+
+        const result = await postData("/obligations", request);
+
+        document.getElementById("obligation-form").reset();
+
+        await refreshDashboard();
+
+        showNotification(
+            result.message + " Agent je ponovo izvršio analizu.",
+            "success"
+        );
+
+    } catch (error) {
+        showNotification(error.message, "error");
+    } finally {
+        button.disabled = false;
+        button.textContent = "Dodaj obavezu";
+    }
+}
+
+
+// ==========================================
+// EVIDENTIRANJE PRIMLJENOG PRIHODA
+// ==========================================
+
+async function receiveIncome(event) {
+    event.preventDefault();
+
+    const button = event.submitter;
+    button.disabled = true;
+    button.textContent = "Evidentiranje...";
+
+    try {
+        const incomeId = document.getElementById(
+            "receive-income-select"
+        ).value;
+
+        if (!incomeId) {
+            throw new Error("Prvo odaberite prihod.");
+        }
+
+        const request = {
+            actual_date: document.getElementById("actual-date").value,
+            actual_amount: Number(
+                document.getElementById("actual-amount").value
+            )
+        };
+
+        const result = await postData(
+            `/incomes/${incomeId}/receive`,
+            request
+        );
+
+        document.getElementById("receive-income-form").reset();
+
+        await refreshDashboard();
+
+        showNotification(
+            result.message +
+            ` Kašnjenje uplate: ${result.income.delay_days} dana.`,
+            "success"
+        );
+
+    } catch (error) {
+        showNotification(error.message, "error");
+    } finally {
+        button.disabled = false;
+        button.textContent = "Evidentiraj uplatu";
+    }
+}
+
+
+// ==========================================
+// RUCNO POKRETANJE AGENTA
+// ==========================================
+
 async function runAgent() {
     const button = document.getElementById("run-agent");
 
@@ -210,15 +472,7 @@ async function runAgent() {
     button.textContent = "Analiza u toku...";
 
     try {
-        const response = await fetch("/agent/run", {
-            method: "POST"
-        });
-
-        const result = await response.json();
-
-        if (!response.ok) {
-            throw new Error(result.detail || "Agent nije mogao izvršiti analizu.");
-        }
+        const result = await postData("/agent/run", {});
 
         showNotification(
             result.message + " " + result.decision.message,
@@ -235,9 +489,44 @@ async function runAgent() {
     }
 }
 
+
+// ==========================================
+// POVEZIVANJE DOGADJAJA
+// ==========================================
+
 document.getElementById("run-agent").addEventListener(
     "click",
     runAgent
 );
+
+document.getElementById("income-form").addEventListener(
+    "submit",
+    createIncome
+);
+
+document.getElementById("obligation-form").addEventListener(
+    "submit",
+    createObligation
+);
+
+document.getElementById("receive-income-form").addEventListener(
+    "submit",
+    receiveIncome
+);
+
+document.getElementById("receive-income-select").addEventListener(
+    "change",
+    updateActualAmount
+);
+
+
+// ==========================================
+// POCETNO UCITAVANJE
+// ==========================================
+
+document.getElementById("income-date").min = todayString();
+document.getElementById("obligation-date").min = todayString();
+document.getElementById("actual-date").max = todayString();
+document.getElementById("actual-date").value = todayString();
 
 refreshDashboard();

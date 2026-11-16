@@ -16,7 +16,7 @@ from app.agent import FinancialAgentRunner
 
 
 # ==========================================
-# 1. POSEBNA DEMONSTRACIJSKA BAZA
+# 1. POSEBNA DEMONSTRACIJSKA 
 # ==========================================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -58,7 +58,7 @@ def prepare_demo_data(db):
 
     # Pocetno stanje racuna
     account = AccountState(
-        current_balance=Decimal("2400.00")
+        current_balance=Decimal("4000.00")
     )
 
     db.add(account)

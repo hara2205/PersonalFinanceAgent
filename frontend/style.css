@@ -458,3 +458,87 @@ footer {
         padding: 18px 12px;
     }
 }
+
+/* ==========================================
+   UPRAVLJANJE FINANSIJAMA
+========================================== */
+
+.management-section {
+    margin-bottom: 25px;
+}
+
+.section-heading {
+    margin-bottom: 18px;
+}
+
+.section-heading h2 {
+    font-size: 21px;
+    margin: 7px 0;
+}
+
+.management-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.form-panel {
+    min-width: 0;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #536174;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fbfcfe;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    outline: none;
+    transition: 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    border-color: var(--blue);
+    background: white;
+    box-shadow: 0 0 0 3px rgba(71, 120, 232, 0.10);
+}
+
+.form-button {
+    width: 100%;
+    margin-top: 5px;
+}
+
+.form-button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+@media (max-width: 1100px) {
+    .management-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 750px) {
+    .management-grid {
+        grid-template-columns: 1fr;
+    }
+}
