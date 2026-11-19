@@ -96,6 +96,8 @@ def assess_risk(shortage_date, first_shortage_amount, maximum_shortage, referenc
 def make_agent_decision(db, cashflow_result=None, reference_date: date | None = None):
     """
     Analizira novcani tok i donosi odluku o upozorenju uz konzistentan referentni datum.
+    Kada se procijenjeni datum manjka pomjeri, zatvara prethodno aktivno upozorenje
+    kako bi UI prikazao samo trenutnu procjenu.
     """
     current_date = (
         reference_date
@@ -108,17 +110,18 @@ def make_agent_decision(db, cashflow_result=None, reference_date: date | None = 
     else:
         result = cashflow_result
 
+    active_alerts = (
+        db.query(AgentAlert)
+        .filter(AgentAlert.is_active == True)
+        .order_by(AgentAlert.created_at.desc())
+        .all()
+    )
+
     # --------------------------------------
     # 1. NEMA PREDVIDJENOG MANJKA
     # --------------------------------------
 
     if not result["has_shortage"]:
-
-        active_alerts = (
-            db.query(AgentAlert)
-            .filter(AgentAlert.is_active == True)
-            .all()
-        )
 
         for alert in active_alerts:
             alert.is_active = False
@@ -128,6 +131,7 @@ def make_agent_decision(db, cashflow_result=None, reference_date: date | None = 
         return {
             "alert_created": False,
             "alert_updated": False,
+            "closed_alerts_count": len(active_alerts),
             "risk_level": "NONE",
             "message": "Nije predvidjen manjak novca."
         }
@@ -208,29 +212,32 @@ def make_agent_decision(db, cashflow_result=None, reference_date: date | None = 
     )
 
     # --------------------------------------
-    # 5. PROVJERA POSTOJECEG UPOZORENJA
+    # 5. ZATVARANJE ZASTARJELIH I AZURIRANJE / KREIRANJE UPOZORENJA
     # --------------------------------------
 
-    existing_alert = (
-        db.query(AgentAlert)
-        .filter(
-            AgentAlert.shortage_date == shortage_date,
-            AgentAlert.is_active == True
-        )
-        .first()
-    )
+    matching_alert = None
+    closed_alerts_count = 0
 
-    if existing_alert:
+    for alert in active_alerts:
+        if alert.shortage_date == shortage_date and matching_alert is None:
+            matching_alert = alert
+        else:
+            alert.is_active = False
+            closed_alerts_count += 1
 
-        existing_alert.shortage_amount = maximum_shortage
-        existing_alert.message = message
-        existing_alert.confidence = confidence
+    if matching_alert is not None:
+
+        matching_alert.shortage_amount = maximum_shortage
+        matching_alert.message = message
+        matching_alert.confidence = confidence
+        matching_alert.created_at = datetime.now(timezone.utc)
 
         db.commit()
 
         return {
             "alert_created": False,
             "alert_updated": True,
+            "closed_alerts_count": closed_alerts_count,
             "risk_level": risk["risk_level"],
             "days_remaining": risk["days_remaining"],
             "message": message,
@@ -259,6 +266,7 @@ def make_agent_decision(db, cashflow_result=None, reference_date: date | None = 
     return {
         "alert_created": True,
         "alert_updated": False,
+        "closed_alerts_count": closed_alerts_count,
         "risk_level": risk["risk_level"],
         "days_remaining": risk["days_remaining"],
         "message": message,

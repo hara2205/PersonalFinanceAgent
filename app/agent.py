@@ -1,5 +1,4 @@
-
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from app.database import SessionLocal
 from app.models import AccountState, IncomePayment, Obligation
@@ -60,20 +59,19 @@ class FinancialAgentRunner:
             "pending_obligations": pending_obligations
         }
 
-    def think(self, db, financial_state):
+    def think(self, db, financial_state, reference_date: date | None = None):
         """
         Analizira prihode, novcani tok
-        i nivo finansijskog rizika.
+        i nivo finansijskog rizika uz jedinstveni referentni datum.
         """
-
+        current_date = reference_date or date.today()
         income_predictions = []
 
         for income in financial_state["pending_incomes"]:
-            prediction = predict_income_date(db, income)
+            prediction = predict_income_date(db, income, reference_date=current_date)
             income_predictions.append(prediction)
 
-        # Analiza novcanog toka izvrsava se samo jednom.
-        cashflow = analyze_cashflow(db)
+        cashflow = analyze_cashflow(db, reference_date=current_date)
 
         risk = None
 
@@ -98,23 +96,26 @@ class FinancialAgentRunner:
             risk = assess_risk(
                 cashflow["first_shortage_date"],
                 first_shortage_amount,
-                cashflow["maximum_shortage"]
+                cashflow["maximum_shortage"],
+                reference_date=current_date
             )
 
         return {
+            "reference_date": current_date,
             "income_predictions": income_predictions,
             "cashflow": cashflow,
             "risk": risk
         }
 
-    def act(self, db, analysis):
+    def act(self, db, analysis, reference_date: date | None = None):
         """
-        Donosi odluku koristeci vec izvrsenu analizu.
+        Donosi odluku koristeci vec izvrsenu analizu i referentni datum.
         """
-
+        current_date = reference_date or analysis.get("reference_date") or date.today()
         return make_agent_decision(
             db,
-            cashflow_result=analysis["cashflow"]
+            cashflow_result=analysis["cashflow"],
+            reference_date=current_date
         )
 
     def learn(self, db):
@@ -149,151 +150,30 @@ class FinancialAgentRunner:
 
         return learned_sources
 
-    def step(self):
+    def step(self, reference_date: date | None = None):
         """Izvrsava jedan kompletan ciklus agenta."""
 
         db = SessionLocal()
+        current_date = reference_date or date.today()
 
         try:
             execution_time = datetime.now(timezone.utc)
 
-            print("\n====================================")
-            print(" PERSONAL FINANCE AGENT")
-            print("====================================")
-
             # 1. SENSE
             financial_state = self.sense(db)
 
-            print("\n[1] SENSE - PRIKUPLJANJE PODATAKA")
-
-            print(
-                f"Trenutno stanje: "
-                f"{financial_state['balance']:.2f} KM"
-            )
-
-            print(
-                "Ocekivani prihodi:",
-                financial_state["pending_income_count"]
-            )
-
-            print(
-                "Unaprijed evidentirane buduce uplate:",
-                financial_state["scheduled_income_count"]
-            )
-
-            print(
-                "Neplacene obaveze:",
-                financial_state["pending_obligation_count"]
-            )
-
             # 2. THINK
-            analysis = self.think(db, financial_state)
-
-            print("\n[2] THINK - ANALIZA I PREDVIDJANJE")
-
-            for prediction in analysis["income_predictions"]:
-                print(
-                    f"{prediction['source']}: "
-                    f"ocekivano {prediction['expected_date']}, "
-                    f"predvidjeno {prediction['predicted_date']}"
-                )
-
-            cashflow = analysis["cashflow"]
-
-            if cashflow["has_shortage"]:
-
-                first_shortage_event = next(
-                    (
-                        event
-                        for event in cashflow["timeline"]
-                        if event["balance"] < 0
-                        and event["date"] == cashflow["first_shortage_date"]
-                    ),
-                    None
-                )
-
-                first_shortage_amount = (
-                    abs(first_shortage_event["balance"])
-                    if first_shortage_event
-                    else cashflow["maximum_shortage"]
-                )
-
-                print(
-                    "Datum prvog manjka:",
-                    cashflow["first_shortage_date"]
-                )
-
-                print(
-                    "Manjak nakon prve obaveze:",
-                    f"{first_shortage_amount:.2f} KM"
-                )
-
-                print(
-                    "Najveci predvidjeni manjak:",
-                    f"{cashflow['maximum_shortage']:.2f} KM"
-                )
-
-                risk = analysis["risk"]
-
-                print(
-                    "Nivo finansijskog rizika:",
-                    risk["risk_level"]
-                )
-
-                print(
-                    "Vrijeme za reakciju:",
-                    risk["days_remaining"],
-                    "dana"
-                )
-
-                print(
-                    "Preporuka:",
-                    risk["recommendation"]
-                )
-
-            else:
-                print("Nije predvidjen manjak novca.")
+            analysis = self.think(db, financial_state, reference_date=current_date)
 
             # 3. ACT
-            decision = self.act(db, analysis)
-
-            print("\n[3] ACT - ODLUKA AGENTA")
-
-            if decision["alert_created"]:
-                print("Novo upozorenje je kreirano!")
-
-            elif decision.get("alert_updated"):
-                print("Postojece upozorenje je azurirano!")
-
-            else:
-                print("Nije kreirano novo upozorenje.")
-
-            print("\nPoruka agenta:")
-            print(decision["message"])
+            decision = self.act(db, analysis, reference_date=current_date)
 
             # 4. LEARN
             learned_sources = self.learn(db)
 
-            print("\n[4] LEARN - HISTORIJSKO ISKUSTVO")
-
-            if not learned_sources:
-                print("Nema historijskih uplata za analizu.")
-
-            for source, delays in learned_sources.items():
-
-                average_delay = sum(delays) / len(delays)
-
-                print(
-                    f"{source}: {len(delays)} uplata, "
-                    f"prosjecno kasnjenje "
-                    f"{average_delay:.2f} dana"
-                )
-
-            print("\nVrijeme izvrsavanja:", execution_time)
-            print("====================================")
-
             return {
                 "execution_time": execution_time,
+                "reference_date": current_date,
                 "financial_state": financial_state,
                 "analysis": analysis,
                 "decision": decision,
