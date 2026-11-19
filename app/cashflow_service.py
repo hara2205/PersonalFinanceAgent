@@ -1,19 +1,17 @@
-
+from datetime import date
 from decimal import Decimal
 
 from app.models import AccountState, IncomePayment, Obligation
 from app.income_prediction import predict_income_date
 
 
-def analyze_cashflow(db):
+def analyze_cashflow(db, reference_date: date | None = None):
     """
-    Analizira buduci novcani tok na osnovu:
-    - trenutnog stanja racuna
-    - ocekivanih prihoda
-    - unaprijed evidentiranih buducih uplata
-    - predvidjenih datuma prihoda
-    - neplacenih finansijskih obaveza
+    Analizira buduci novcani tok uz jedinstveni referentni datum.
+    Ako ocekivana uplata jos nije potvrđena a njen predvidjeni datum je vec prosao,
+    pomjera se najranije na referentni datum i bilježi kao zakašnjela.
     """
+    current_date = reference_date or date.today()
 
     account = (
         db.query(AccountState)
@@ -26,6 +24,7 @@ def analyze_cashflow(db):
 
     balance = Decimal(account.current_balance)
     events = []
+    overdue_incomes = []
 
     # 1. Ocekivani prihodi
     pending_incomes = (
@@ -35,14 +34,33 @@ def analyze_cashflow(db):
     )
 
     for income in pending_incomes:
-        prediction = predict_income_date(db, income)
+        prediction = predict_income_date(db, income, reference_date=current_date)
+        predicted_date = prediction["predicted_date"]
+        is_overdue = prediction["is_overdue"]
+
+        if is_overdue:
+            effective_date = current_date
+            overdue_incomes.append({
+                "id": income.id,
+                "source": income.source_name,
+                "expected_date": income.expected_date,
+                "original_predicted_date": predicted_date,
+                "effective_date": effective_date,
+                "amount": Decimal(income.expected_amount)
+            })
+        else:
+            effective_date = predicted_date
 
         events.append({
-            "date": prediction["predicted_date"],
+            "date": effective_date,
             "priority": 1,
             "type": "income",
-            "description": income.source_name,
-            "amount": Decimal(income.expected_amount)
+            "description": (
+                f"{income.source_name} (nepotvrdjena uplata u kasnjenju)"
+                if is_overdue else income.source_name
+            ),
+            "amount": Decimal(income.expected_amount),
+            "is_overdue": is_overdue
         })
 
     # 2. Buduce uplate koje su vec evidentirane
@@ -55,12 +73,14 @@ def analyze_cashflow(db):
     )
 
     for income in scheduled_incomes:
+        effective_date = max(income.actual_date, current_date)
         events.append({
-            "date": income.actual_date,
+            "date": effective_date,
             "priority": 1,
             "type": "income",
             "description": income.source_name,
-            "amount": Decimal(income.actual_amount)
+            "amount": Decimal(income.actual_amount),
+            "is_overdue": False
         })
 
     # 3. Neplacene obaveze
@@ -76,11 +96,11 @@ def analyze_cashflow(db):
             "priority": 0,
             "type": "obligation",
             "description": obligation.title,
-            "amount": Decimal(obligation.amount)
+            "amount": Decimal(obligation.amount),
+            "is_overdue": obligation.due_date < current_date
         })
 
     # 4. Hronolosko sortiranje
-    # Obaveza se obradjuje prije prihoda istog dana.
     events.sort(
         key=lambda event: (
             event["date"],
@@ -107,7 +127,8 @@ def analyze_cashflow(db):
             "type": event_name,
             "description": event["description"],
             "amount": event["amount"],
-            "balance": balance
+            "balance": balance,
+            "is_overdue": event.get("is_overdue", False)
         })
 
         if balance < 0:
@@ -120,10 +141,12 @@ def analyze_cashflow(db):
                 maximum_shortage = current_shortage
 
     return {
+        "reference_date": current_date,
         "starting_balance": Decimal(account.current_balance),
         "final_balance": balance,
         "first_shortage_date": first_shortage_date,
         "maximum_shortage": maximum_shortage,
         "has_shortage": first_shortage_date is not None,
+        "overdue_incomes": overdue_incomes,
         "timeline": timeline
     }

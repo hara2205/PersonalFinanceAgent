@@ -1,5 +1,4 @@
-
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from app.database import SessionLocal
@@ -8,13 +7,12 @@ from app.cashflow_service import analyze_cashflow
 from app.income_prediction import predict_income_date
 
 
-def calculate_confidence(db):
+def calculate_confidence(db, reference_date: date | None = None):
     """
     Racuna heuristicki indeks pouzdanosti
     na osnovu kolicine historijskih podataka.
-
-    Ovo nije statisticki kalibrisana vjerovatnoca.
     """
+    current_date = reference_date or date.today()
 
     pending_incomes = (
         db.query(IncomePayment)
@@ -28,7 +26,7 @@ def calculate_confidence(db):
     scores = []
 
     for income in pending_incomes:
-        prediction = predict_income_date(db, income)
+        prediction = predict_income_date(db, income, reference_date=current_date)
         sample_count = prediction["sample_count"]
 
         if sample_count == 0:
@@ -40,6 +38,9 @@ def calculate_confidence(db):
         else:
             score = 0.80
 
+        if prediction["is_overdue"]:
+            score = max(0.15, score - 0.15)
+
         scores.append(score)
 
     return Decimal(str(min(scores))).quantize(
@@ -47,15 +48,12 @@ def calculate_confidence(db):
     )
 
 
-def assess_risk(shortage_date, first_shortage_amount, maximum_shortage):
+def assess_risk(shortage_date, first_shortage_amount, maximum_shortage, reference_date: date | None = None):
     """
-    Procjenjuje nivo finansijskog rizika.
-
-    Procjena se zasniva na vremenu do manjka
-    i iznosima predvidjenog manjka.
+    Procjenjuje nivo finansijskog rizika u odnosu na isti referentni datum.
     """
-
-    days_remaining = (shortage_date - date.today()).days
+    current_date = reference_date or date.today()
+    days_remaining = (shortage_date - current_date).days
 
     first_shortage_amount = Decimal(str(first_shortage_amount))
     maximum_shortage = Decimal(str(maximum_shortage))
@@ -95,16 +93,18 @@ def assess_risk(shortage_date, first_shortage_amount, maximum_shortage):
     }
 
 
-def make_agent_decision(db, cashflow_result=None):
+def make_agent_decision(db, cashflow_result=None, reference_date: date | None = None):
     """
-    Analizira novcani tok i donosi odluku o upozorenju.
-
-    Ako je analiza novcanog toka vec izvrsena,
-    koristi se postojeci rezultat umjesto ponovnog racunanja.
+    Analizira novcani tok i donosi odluku o upozorenju uz konzistentan referentni datum.
     """
+    current_date = (
+        reference_date
+        or (cashflow_result.get("reference_date") if cashflow_result else None)
+        or date.today()
+    )
 
     if cashflow_result is None:
-        result = analyze_cashflow(db)
+        result = analyze_cashflow(db, reference_date=current_date)
     else:
         result = cashflow_result
 
@@ -168,16 +168,22 @@ def make_agent_decision(db, cashflow_result=None):
     risk = assess_risk(
         shortage_date,
         first_shortage_amount,
-        maximum_shortage
+        maximum_shortage,
+        reference_date=current_date
     )
 
-    confidence = calculate_confidence(db)
+    confidence = calculate_confidence(db, reference_date=current_date)
 
     risk_labels = {
         "LOW": "NIZAK",
         "MEDIUM": "SREDNJI",
         "HIGH": "VISOK"
     }
+
+    overdue_note = ""
+    if result.get("overdue_incomes"):
+        sources = ", ".join(item["source"] for item in result["overdue_incomes"])
+        overdue_note = f" Napomena: ocekivana uplata ({sources}) kasni preko predvidjenog datuma."
 
     # --------------------------------------
     # 4. GENERISANJE PORUKE
@@ -198,6 +204,7 @@ def make_agent_decision(db, cashflow_result=None):
         f"{maximum_shortage:.2f} KM. "
         f"PREPORUKA AGENTA: "
         f"{risk['recommendation']}"
+        f"{overdue_note}"
     )
 
     # --------------------------------------

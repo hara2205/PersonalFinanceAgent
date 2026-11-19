@@ -1,17 +1,17 @@
-
 import math
-from datetime import timedelta
+from datetime import date, timedelta
 from statistics import mean, median
 
 from app.database import SessionLocal
 from app.models import IncomePayment
 
 
-def predict_income_date(db, income_payment):
+def predict_income_date(db, income_payment, reference_date: date | None = None):
     """
     Predvidja datum uplate na osnovu historijskih
     kasnjenja za isti izvor prihoda.
     """
+    current_date = reference_date or date.today()
 
     historical_payments = (
         db.query(IncomePayment)
@@ -30,34 +30,32 @@ def predict_income_date(db, income_payment):
     ]
 
     if not delays:
-        return {
-            "source": income_payment.source_name,
-            "expected_date": income_payment.expected_date,
-            "predicted_date": income_payment.expected_date,
-            "average_delay": 0,
-            "median_delay": 0,
-            "sample_count": 0,
-            "confidence": "Niska",
-            "method": "Bez historijskih podataka"
-        }
-
-    average_delay = mean(delays)
-    median_delay = median(delays)
-
-    # Koristimo prosjecno kasnjenje za predvidjanje.
-    predicted_delay = math.ceil(max(0, average_delay))
-
-    predicted_date = (
-        income_payment.expected_date
-        + timedelta(days=predicted_delay)
-    )
-
-    if len(delays) < 3:
+        predicted_date = income_payment.expected_date
+        average_delay = 0
+        median_delay = 0
+        sample_count = 0
         confidence = "Niska"
-    elif len(delays) < 6:
-        confidence = "Umjerena"
+        method = "Bez historijskih podataka"
     else:
-        confidence = "Dobra"
+        average_delay = mean(delays)
+        median_delay = median(delays)
+        predicted_delay = math.ceil(max(0, average_delay))
+        predicted_date = (
+            income_payment.expected_date
+            + timedelta(days=predicted_delay)
+        )
+        sample_count = len(delays)
+
+        if sample_count < 3:
+            confidence = "Niska"
+        elif sample_count < 6:
+            confidence = "Umjerena"
+        else:
+            confidence = "Dobra"
+
+        method = "Historijski prosjek kasnjenja"
+
+    is_overdue = predicted_date < current_date
 
     return {
         "source": income_payment.source_name,
@@ -65,9 +63,10 @@ def predict_income_date(db, income_payment):
         "predicted_date": predicted_date,
         "average_delay": round(average_delay, 2),
         "median_delay": median_delay,
-        "sample_count": len(delays),
+        "sample_count": sample_count,
         "confidence": confidence,
-        "method": "Historijski prosjek kasnjenja"
+        "method": method,
+        "is_overdue": is_overdue
     }
 
 
