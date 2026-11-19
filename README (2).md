@@ -1,7 +1,7 @@
 # Personal Finance Agent
 ## Agent za predviđanje likvidnosti kod korisnika s neredovnim prihodima
 
- Agent procjenjuje da li korisnik može izmiriti obaveze prije nego što očekivani prihodi postanu dostupni. Predviđa datume prihoda na osnovu historijskih kašnjenja, simulira budući novčani tok i generiše upozorenja o potencijalnom manjku novca.
+Agent procjenjuje da li korisnik može izmiriti obaveze prije nego što očekivani prihodi postanu dostupni. Predviđa datume prihoda na osnovu historijskih kašnjenja, simulira budući novčani tok i generiše upozorenja o potencijalnom manjku novca.
 
 **GitHub:** https://github.com/hara2205/PersonalFinanceAgent
 
@@ -27,6 +27,7 @@
 - SQLite
 - HTML, CSS, JavaScript
 - pytest
+- httpx
 
 ### Struktura projekta
 ```text
@@ -36,6 +37,7 @@ PersonalFinanceAgent/
 │   ├── models.py
 │   ├── seed.py
 │   ├── income_prediction.py
+│   ├── income_service.py
 │   ├── cashflow_service.py
 │   ├── decisions.py
 │   ├── learning.py
@@ -52,6 +54,12 @@ PersonalFinanceAgent/
 ├── requirements.txt
 └── PROJECT_SPECIFICATION.md
 ```
+
+### Zavisnosti (aplikacija i testovi)
+
+Instalacijom paketa iz `requirements.txt` instaliraju se aplikacijske zavisnosti (`fastapi`, `uvicorn`, `sqlalchemy`, `pydantic`) kao i **sve zavisnosti potrebne za testove**:
+- **`pytest`** — za pokretanje jediničnih i integracionih testova.
+- **`httpx`** — obavezna zavisnost za `fastapi.testclient.TestClient` pri testiranju FastAPI ruta.
 
 ### Pokretanje na Windowsu
 
@@ -78,15 +86,24 @@ PersonalFinanceAgent/
    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
    .\.venv\Scripts\Activate.ps1
    ```
-5. Instalirati zavisnosti:
+5. Instalirati zavisnosti (uključujući testne pakete `pytest` i `httpx`):
    ```powershell
    pip install -r requirements.txt
    ```
-6. Pokrenuti backend i web aplikaciju:
+6. **Pokretanje sa svježom bazom podataka:**
+   Ako već postoji datoteka baze u `data/`, prvo je uklonite kako biste krenuli sa potpuno svježom bazom:
+   ```powershell
+   if (Test-Path data\personal_finance.db) { Remove-Item data\personal_finance.db }
+   ```
+   Zatim kreirajte svježu bazu, tabele i početne demonstracijske podatke:
+   ```powershell
+   python -m app.seed
+   ```
+7. Pokrenuti backend i web aplikaciju:
    ```powershell
    uvicorn app.main:app --reload
    ```
-7. Otvoriti aplikaciju u pregledniku:
+8. Otvoriti aplikaciju u pregledniku:
    - UI: http://127.0.0.1:8000/ui
    - API dokumentacija: http://127.0.0.1:8000/docs
    - Health endpoint: http://127.0.0.1:8000/health
@@ -95,7 +112,7 @@ Za zaustavljanje servera pritisnuti `Ctrl+C` u terminalu.
 
 ### Testiranje
 
-Iz root direktorija projekta, uz aktivirano virtualno okruženje:
+Provjerite da su instalirane zavisnosti za testove (`pytest` i `httpx` kroz `pip install -r requirements.txt`). Iz root direktorija projekta, uz aktivirano virtualno okruženje:
 ```powershell
 python -m pytest tests -v
 ```
@@ -126,4 +143,3 @@ Demo skripte koriste izolovane baze kako ne bi mijenjale glavnu bazu aplikacije.
 - **Learn:** analizira realizovane uplate i historijska kašnjenja po izvoru prihoda.
 
 Agent se pokreće ručno putem interfejsa/API-ja, a backend ima i periodično pozadinsko izvršavanje.
-
