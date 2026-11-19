@@ -1,4 +1,3 @@
-
 import asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -18,6 +17,13 @@ from app.models import (
     AgentAlert
 )
 from app.cashflow_service import analyze_cashflow
+from app.income_service import (
+    activate_due_incomes,
+    record_income_receipt,
+    IncomeNotFoundError,
+    IncomeAlreadyProcessedError,
+    AccountStateMissingError
+)
 
 
 AGENT_INTERVAL = 24 * 60 * 60
@@ -48,65 +54,17 @@ class ReceiveIncomeRequest(BaseModel):
 
 
 # ==========================================
-# AKTIVIRANJE BUDUCIH UPLATA
+# AKTIVIRANJE BUDUCIH UPLATA (PREKO SERVISA)
 # ==========================================
 
-def activate_due_incomes(simulation_date: date | None = None):
-
-    current_date = simulation_date or date.today()
-
+def _activate_due_incomes_with_session(reference_date: date) -> int:
+    """Otvara sesiju i poziva aplikacijski servis za aktivaciju dospjelih uplata."""
     db = SessionLocal()
-
     try:
-        due_incomes = (
-            db.query(IncomePayment)
-            .filter(
-                IncomePayment.status == "ScheduledReceived",
-                IncomePayment.actual_date <= current_date
-            )
-            .all()
-        )
-
-        if not due_incomes:
-            return 0
-
-        account = (
-            db.query(AccountState)
-            .order_by(AccountState.id)
-            .first()
-        )
-
-        if account is None:
-            raise ValueError(
-                "Finansijsko stanje racuna nije pronadjeno."
-            )
-
-        activated_count = 0
-
-        for income in due_incomes:
-            income.status = "Received"
-
-            account.current_balance = (
-                Decimal(account.current_balance)
-                + Decimal(income.actual_amount)
-            )
-
-            activated_count += 1
-
-        account.updated_at = datetime.now(timezone.utc)
-
-        db.commit()
-
-        print(
-            f"[BACKGROUND] Aktivirano uplata: {activated_count}"
-        )
-
-        return activated_count
-
+        return activate_due_incomes(db, reference_date=reference_date)
     except Exception:
         db.rollback()
         raise
-
     finally:
         db.close()
 
@@ -116,12 +74,12 @@ def activate_due_incomes(simulation_date: date | None = None):
 # ==========================================
 
 async def run_agent_once(simulation_date: date | None = None):
+    reference_date = simulation_date or date.today()
 
     async with agent_lock:
-
         activated_count = await asyncio.to_thread(
-            activate_due_incomes,
-            simulation_date
+            _activate_due_incomes_with_session,
+            reference_date
         )
 
         result = await asyncio.to_thread(agent.step)
@@ -132,9 +90,7 @@ async def run_agent_once(simulation_date: date | None = None):
 
 
 async def periodic_agent_runner():
-
     while True:
-
         try:
             print("\n[BACKGROUND] Pokretanje finansijske analize...")
 
@@ -162,7 +118,6 @@ async def periodic_agent_runner():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-
     print("\n====================================")
     print(" POKRETANJE PERSONAL FINANCE BACKEND-a")
     print("====================================")
@@ -193,7 +148,7 @@ app = FastAPI(
         "API za pracenje finansijskih obaveza, "
         "predvidjanje prihoda i analizu likvidnosti."
     ),
-    version="1.3.0",
+    version="1.3.1",
     lifespan=lifespan
 )
 
@@ -213,7 +168,6 @@ app.mount(
 
 @app.get("/")
 def home():
-
     return {
         "application": "Personal Finance Agent",
         "status": "running",
@@ -223,7 +177,6 @@ def home():
 
 @app.get("/health")
 def health_check():
-
     return {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat()
@@ -238,7 +191,6 @@ def health_check():
 async def run_agent_manually(
     simulation_date: date | None = None
 ):
-
     try:
         result = await run_agent_once(simulation_date)
 
@@ -277,7 +229,6 @@ async def run_agent_manually(
 
 @app.post("/incomes")
 async def create_income(request: CreateIncomeRequest):
-
     db = SessionLocal()
 
     try:
@@ -336,7 +287,6 @@ async def create_income(request: CreateIncomeRequest):
 
 @app.post("/obligations")
 async def create_obligation(request: CreateObligationRequest):
-
     db = SessionLocal()
 
     try:
@@ -398,7 +348,6 @@ async def create_obligation(request: CreateObligationRequest):
 
 @app.get("/finance/overview")
 def get_financial_overview():
-
     db = SessionLocal()
 
     try:
@@ -474,7 +423,6 @@ def get_financial_overview():
 
 @app.get("/alerts")
 def get_active_alerts():
-
     db = SessionLocal()
 
     try:
@@ -511,7 +459,6 @@ def get_active_alerts():
 
 @app.get("/finance/forecast")
 def get_financial_forecast():
-
     db = SessionLocal()
 
     try:
@@ -553,7 +500,7 @@ def get_financial_forecast():
 
 
 # ==========================================
-# EVIDENTIRANJE PRIMLJENOG PRIHODA
+# EVIDENTIRANJE PRIMLJENOG PRIHODA (DELEGIRA SERVISU)
 # ==========================================
 
 @app.post("/incomes/{income_id}/receive")
@@ -561,96 +508,39 @@ async def receive_income(
     income_id: int,
     request: ReceiveIncomeRequest
 ):
-
     db = SessionLocal()
+    reference_date = date.today()
 
     try:
-        income = (
-            db.query(IncomePayment)
-            .filter(IncomePayment.id == income_id)
-            .first()
+        service_result = record_income_receipt(
+            db=db,
+            income_id=income_id,
+            actual_date=request.actual_date,
+            actual_amount=request.actual_amount,
+            reference_date=reference_date
         )
 
-        if income is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Prihod nije pronadjen."
-            )
-
-        if income.status != "Expected":
-            raise HTTPException(
-                status_code=409,
-                detail="Ovaj prihod je vec evidentiran ili zakazan."
-            )
-
-        account = (
-            db.query(AccountState)
-            .order_by(AccountState.id)
-            .first()
-        )
-
-        if account is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Finansijsko stanje racuna nije pronadjeno."
-            )
-
-        income.actual_date = request.actual_date
-        income.actual_amount = request.actual_amount
-
-        if request.actual_date > date.today():
-
-            income.status = "ScheduledReceived"
-
-            message = (
-                "Buduca uplata je evidentirana. "
-                "Saldo ce biti azuriran na datum uplate."
-            )
-
-        else:
-
-            income.status = "Received"
-
-            account.current_balance = (
-                Decimal(account.current_balance)
-                + request.actual_amount
-            )
-
-            account.updated_at = datetime.now(timezone.utc)
-
-            message = "Prihod je uspjesno evidentiran."
-
-        db.commit()
-        db.refresh(income)
-        db.refresh(account)
-
-        delay_days = (
-            income.actual_date - income.expected_date
-        ).days
-
-        result = {
+        response_payload = {
             "status": "success",
-            "message": message,
-            "income": {
-                "id": income.id,
-                "source": income.source_name,
-                "expected_date": income.expected_date.isoformat(),
-                "actual_date": income.actual_date.isoformat(),
-                "expected_amount": float(income.expected_amount),
-                "actual_amount": float(income.actual_amount),
-                "delay_days": delay_days,
-                "status": income.status
-            },
-            "new_account_balance": float(account.current_balance)
+            "message": service_result["message"],
+            "income": service_result["income"],
+            "new_account_balance": service_result["new_account_balance"]
         }
 
-    except HTTPException:
+    except IncomeNotFoundError as error:
         db.rollback()
-        raise
+        raise HTTPException(status_code=404, detail=str(error))
+
+    except IncomeAlreadyProcessedError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(error))
+
+    except AccountStateMissingError as error:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(error))
 
     except Exception as error:
         db.rollback()
-
         raise HTTPException(
             status_code=500,
             detail=(
@@ -662,7 +552,7 @@ async def receive_income(
     finally:
         db.close()
 
-    if request.actual_date <= date.today():
-        await run_agent_once()
+    if service_result["balance_updated"]:
+        await run_agent_once(reference_date)
 
-    return result
+    return response_payload
